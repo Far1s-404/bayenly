@@ -5,6 +5,19 @@ const { authenticateToken, requireRole } = require("../middleware/auth");
 
 const router = express.Router();
 
+function validateIdParam(req, res, next, value) {
+    if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value))) {
+        return res.status(400).json({
+            message: "A valid ID is required.",
+        });
+    }
+
+    next();
+}
+
+router.param("id", validateIdParam);
+router.param("videoId", validateIdParam);
+
 // Get the logged-in teacher's lesson packages
 router.get(
 "/my",
@@ -197,18 +210,6 @@ authenticateToken,
 requireRole("teacher", "admin"),
 async (req, res) => {
     try {
-        const videoCheck = await pool.query(
-    `SELECT COUNT(*) AS video_count
-     FROM lesson_videos
-     WHERE package_id = $1`,
-    [req.params.id]
-);
-
-if (Number(videoCheck.rows[0].video_count) === 0) {
-    return res.status(400).json({
-        message: "Add at least one video before publishing."
-    });
-}
         const result = await pool.query(
             `UPDATE lesson_packages
                 SET status = 'published',
@@ -216,11 +217,31 @@ if (Number(videoCheck.rows[0].video_count) === 0) {
                 WHERE id = $1
                 AND teacher_id = $2
                 AND status = 'draft'
+                AND EXISTS (
+                    SELECT 1
+                    FROM lesson_videos
+                    WHERE package_id = lesson_packages.id
+                )
                 RETURNING id, title, subject, price, language, status`,
             [req.params.id, req.user.id]
         );
 
         if (result.rows.length === 0) {
+            const ownedDraft = await pool.query(
+                `SELECT id
+                 FROM lesson_packages
+                 WHERE id = $1
+                   AND teacher_id = $2
+                   AND status = 'draft'`,
+                [req.params.id, req.user.id]
+            );
+
+            if (ownedDraft.rows.length > 0) {
+                return res.status(400).json({
+                    message: "Add at least one video before publishing.",
+                });
+            }
+
             return res.status(404).json({
                 message: "Draft package not found.",
             });
@@ -266,6 +287,26 @@ async (req, res) => {
         ) {
             return res.status(400).json({
                 message: "A valid video URL is required.",
+            });
+        }
+
+        let parsedVideoUrl;
+
+        try {
+            parsedVideoUrl = new URL(video_url.trim());
+        } catch {
+            return res.status(400).json({
+                message: "Video URL must be an absolute HTTP or HTTPS URL.",
+            });
+        }
+
+        if (
+            !["http:", "https:"].includes(parsedVideoUrl.protocol) ||
+            parsedVideoUrl.username ||
+            parsedVideoUrl.password
+        ) {
+            return res.status(400).json({
+                message: "Video URL must be an absolute HTTP or HTTPS URL.",
             });
         }
 

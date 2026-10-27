@@ -29,7 +29,7 @@ router.post(
         try {
             const { purchase_id } = req.body;
 
-            if (!Number.isInteger(Number(purchase_id)) || Number(purchase_id) <= 0) {
+            if (!Number.isSafeInteger(purchase_id) || purchase_id <= 0) {
                 return res.status(400).json({
                     message: "A valid purchase_id is required.",
                 });

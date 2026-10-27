@@ -6,8 +6,22 @@ const pool = require("./db");
 
 const app = express();
 
-app.use(cors());
-app.use(express.json());
+const isProduction = process.env.NODE_ENV === "production";
+const allowedOrigins = (process.env.CORS_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+app.use(cors({
+    origin(origin, callback) {
+        if (!origin || !isProduction) {
+            return callback(null, true);
+        }
+
+        return callback(null, allowedOrigins.includes(origin));
+    },
+}));
+app.use(express.json({ limit: "100kb" }));
 
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/lessons", require("./routes/lessons"));
@@ -37,10 +51,56 @@ app.get("/api/health", async (req, res) => {
     }
 });
 
+app.use((req, res) => {
+    res.status(404).json({
+        message: "Route not found.",
+    });
+});
+
+app.use((error, req, res, next) => {
+    if (res.headersSent) {
+        return next(error);
+    }
+
+    const status = Number.isInteger(error.status) ? error.status : 500;
+    const clientError = status >= 400 && status < 500;
+
+    if (!clientError) {
+        console.error("Request failed:", error.message);
+    }
+
+    return res.status(status).json({
+        message: clientError
+            ? status === 400
+                ? "Invalid request."
+                : error.message
+            : "Internal server error.",
+    });
+});
+
 const PORT = process.env.PORT || 3000;
 
 async function startServer() {
     try {
+        if (!process.env.JWT_SECRET) {
+            throw new Error("JWT_SECRET must be configured.");
+        }
+
+        if (
+            isProduction &&
+            Buffer.byteLength(process.env.JWT_SECRET, "utf8") < 32
+        ) {
+            throw new Error(
+                "JWT_SECRET must be at least 32 bytes in production."
+            );
+        }
+
+        if (isProduction && allowedOrigins.length === 0) {
+            throw new Error(
+                "CORS_ORIGINS must contain the production frontend origin."
+            );
+        }
+
         await pool.query(
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT"
         );
@@ -49,7 +109,7 @@ async function startServer() {
             console.log(`Bayenly API running at http://localhost:${PORT}`);
         });
     } catch (error) {
-        console.error("Database schema initialization failed:", error.message);
+        console.error("Server startup failed:", error.message);
         process.exitCode = 1;
     }
 }

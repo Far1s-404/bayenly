@@ -106,10 +106,11 @@ router.post("/login", async (req, res) => {
             typeof email !== "string" ||
             typeof password !== "string" ||
             !email.trim() ||
-            !password
+            !password ||
+            Buffer.byteLength(password, "utf8") > 72
         ) {
             return res.status(400).json({
-                message: "Email and password are required.",
+                message: "A valid email and password are required.",
             });
         }
 

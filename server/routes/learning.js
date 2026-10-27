@@ -8,6 +8,19 @@ const {
 
 const router = express.Router();
 
+router.param("packageId", (req, res, next, packageId) => {
+    if (
+        !/^[1-9]\d*$/.test(packageId) ||
+        !Number.isSafeInteger(Number(packageId))
+    ) {
+        return res.status(400).json({
+            message: "A valid package ID is required.",
+        });
+    }
+
+    next();
+});
+
 // GET /api/learning/:packageId
 // Return lesson videos only to students who have paid
 

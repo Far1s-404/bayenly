@@ -1,6 +1,8 @@
 
 const jwt = require("jsonwebtoken");
 
+const allowedRoles = new Set(["student", "teacher", "admin"]);
+
 function authenticateToken(req, res, next) {
     const authHeader = req.headers.authorization;
     const token = authHeader?.startsWith("Bearer ")
@@ -13,8 +15,29 @@ function authenticateToken(req, res, next) {
         });
     }
 
+    const secret = process.env.JWT_SECRET;
+
+    if (!secret) {
+        return res.status(503).json({
+            message: "Authentication is not configured.",
+        });
+    }
+
     try {
-        const payload = jwt.verify(token, process.env.JWT_SECRET);
+        const payload = jwt.verify(token, secret, {
+            algorithms: ["HS256"],
+        });
+
+        if (
+            typeof payload.sub !== "string" ||
+            !payload.sub ||
+            typeof payload.role !== "string" ||
+            !allowedRoles.has(payload.role)
+        ) {
+            return res.status(401).json({
+                message: "Invalid or expired token.",
+            });
+        }
 
         req.user = {
             id: payload.sub,
@@ -41,4 +64,4 @@ function requireRole(...allowedRoles) {
     };
 }
 
-module.exports = { authenticateToken, requireRole };
+module.exports = { authenticateToken, requireRole, allowedRoles };
