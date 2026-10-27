@@ -3,6 +3,22 @@ import Dashboard from './Dashboard';
 import { ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, BadgeCheck, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, CircleHelp, Clock3, Download, FileText, Headphones, LayoutDashboard, Library, LockKeyhole, Menu, MoreHorizontal, Play, Plus, Search, Settings, ShieldCheck, ShoppingBag, Sparkles, Star, TrendingUp, Users, Video, Wallet, X } from 'lucide-react';
 import { lessons, videos, type Lesson } from './data';
 
+
+const API_BASE = 'http://localhost:3000/api';
+
+type ApiLesson = {
+  id: number;
+  title: string;
+  description: string;
+  subject: string;
+  price: string | number;
+  language: 'ar' | 'en';
+  teacher_name: string;
+  teacher_specialization?: string | null;
+  video_count: number;
+};
+
+
 type Lang = 'en' | 'ar';
 type Screen = 'home' | 'lesson' | 'dashboard';
 const copy = {
@@ -20,6 +36,11 @@ export default function App({ lang: externalLang, setLang: externalSetLang, rout
   const lang = externalLang ?? internalLang; const setLang = externalSetLang ?? setInternalLang;
   const [screen, setScreen] = useState<Screen>(() => route.startsWith('/lesson') ? 'lesson' : route.startsWith('/teacher') ? 'dashboard' : 'home');
   const [query, setQuery] = useState('');
+  
+  const [apiLessons, setApiLessons] = useState<Lesson[]>([]);
+  const [loadingLessons, setLoadingLessons] = useState(true);
+  const [lessonsError, setLessonsError] = useState('');
+
   const [category, setCategory] = useState(0);
   const [toast, setToast] = useState('');
   const [activeSection, setActiveSection] = useState('Overview');
@@ -27,11 +48,71 @@ export default function App({ lang: externalLang, setLang: externalSetLang, rout
   const t = copy[lang]; const ar = lang === 'ar';
   useEffect(() => { setScreen(route.startsWith('/lesson') ? 'lesson' : route.startsWith('/teacher') ? 'dashboard' : 'home'); }, [route]);
   useEffect(() => { document.documentElement.lang = lang; document.documentElement.dir = ar ? 'rtl' : 'ltr'; }, [lang, ar]);
-  const filtered = useMemo(() => lessons.filter(l => {
+  
+  
+useEffect(() => {
+  const controller = new AbortController();
+
+  async function fetchLessons() {
+    try {
+      setLoadingLessons(true);
+      setLessonsError('');
+
+      const response = await fetch(`${API_BASE}/lessons`, {
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error('Could not load lessons.');
+      }
+
+      const data: { lessons: ApiLesson[] } | ApiLesson[] =
+        await response.json();
+
+      const packages = Array.isArray(data) ? data : data.lessons;
+
+      const mapped: Lesson[] = packages.map((item, index) => {
+        const visual = lessons[index % lessons.length];
+
+        return {
+          id: item.id,
+          title: item.title,
+          teacher: item.teacher_name,
+          subject: item.subject,
+          grade: item.teacher_specialization || 'All levels',
+          videos: item.video_count,
+          duration: '—',
+          price: Number(item.price),
+          rating: '—',
+          color: visual.color,
+          art: visual.art,
+          tag: 'Lesson package',
+        };
+      });
+
+      setApiLessons(mapped);
+    } catch (error) {
+      if (error instanceof Error && error.name !== 'AbortError') {
+        setLessonsError(error.message);
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setLoadingLessons(false);
+      }
+    }
+  }
+
+  fetchLessons();
+
+  return () => controller.abort();
+}, []);
+
+
+  const filtered = useMemo(() => apiLessons.filter(l => {
     const q = query.trim().toLowerCase(); const matchesQuery = !q || [l.title,l.teacher,l.subject,l.grade].some(v=>v.toLowerCase().includes(q));
     const selected = t.categories[category]; const subjectMap: Record<string,string> = { 'رياضيات':'Mathematics','علوم':'Science','لغات':'Languages','فيزياء':'Physics','أحياء':'Biology','تاريخ':'History' };
     const c = subjectMap[selected] || selected; return matchesQuery && (category === 0 || l.subject === c || (c === 'Science' && ['Biology','Physics'].includes(l.subject)));
-  }), [query,category,t]);
+  }), [apiLessons,query,category,t]);
   const notify = (msg: string) => { setToast(msg); window.setTimeout(()=>setToast(''), 3200); };
   const go = (target: Screen) => { setScreen(target); setMobileNav(false); onNavigate?.(target === 'lesson' ? '/lesson/newton' : target === 'dashboard' ? '/teacher/overview' : '/'); window.scrollTo({top:0,behavior:'smooth'}); };
 
@@ -47,7 +128,32 @@ export default function App({ lang: externalLang, setLang: externalSetLang, rout
           <div className="hero-art"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="hero-note note-top"><Sparkles size={15}/><span>{ar?'خطوة بخطوة':'One concept at a time'}</span></div><div className="study-card"><div className="study-head"><div className="tiny-brand">ب</div><span>{ar?'باقة فيزياء':'PHYSICS · GRADE 10'}</span><Bookmark size={16}/></div><div className="atom-art"><div className="atom-core"/><i/><i/><i/></div><div className="study-title">Newton’s<br/>laws of motion</div><div className="study-footer"><span><Play size={12} fill="currentColor"/> 8 {t.videos}</span><b>EGP 180</b></div></div><div className="hero-note note-bottom"><span className="note-icon"><Check size={16}/></span><span><strong>{ar?'تملك دروسك':'Yours to keep'}</strong><small>{ar?'وصول دائم بعد الدفع':'One payment. Ongoing access.'}</small></span></div><div className="hero-scribble">✳</div></div>
         </div><div className="hero-bottom"><span>{ar?'المنصة التعليمية اللي بتفهمك':'A better way to understand'}</span><div className="hero-brands"><span>Maths</span><i/> <span>Science</span><i/> <span>Languages</span><i/> <span>Humanities</span></div></div></section>
         <section className="section subject-section"><div className="section-heading"><div><div className="eyebrow muted-eyebrow">{ar?'اختار طريقك':'MAKE IT YOURS'}</div><h2>{t.browse}</h2><p>{t.browseText}</p></div><button className="link-button" onClick={()=>{setCategory(0);document.getElementById('lessons')?.scrollIntoView({behavior:'smooth'});}}>{t.viewAll}<ArrowRight className={ar?'flip':''} size={16}/></button></div><div className="subject-grid">{subjects.map((s,i)=><button key={s.en} className={`subject-card ${s.color}`} onClick={()=>{setCategory(i===0?1:i===1?2:i===2?3:i===3?4:i===4?5:i===5?6:0);document.getElementById('lessons')?.scrollIntoView({behavior:'smooth'});}}><span className="subject-icon">{s.icon}</span><span className="subject-info"><strong>{ar?s.ar:s.en}</strong><small>{s.count} {ar?'درس':'lessons'}</small></span><ArrowUpRight size={16} className="subject-arrow"/></button>)}</div></section>
-        <section className="section featured-section" id="lessons"><div className="section-heading"><div><div className="eyebrow muted-eyebrow">{ar?'دروس تستاهل وقتك':'GOOD THINGS TO LEARN'}</div><h2>{t.featured}</h2><p>{t.featuredText}</p></div><button className="link-button" onClick={()=>{setCategory(0);setQuery('');}}>{t.viewAll}<ArrowRight className={ar?'flip':''} size={16}/></button></div><div className="filter-row">{t.categories.map((c,i)=><button key={c} onClick={()=>setCategory(i)} className={`filter-chip ${category===i?'selected':''}`}>{c}</button>)}</div>{filtered.length?<div className="lesson-grid">{filtered.slice(0,4).map(item=><LessonCard key={item.id} lesson={item} lang={lang} onClick={()=>go('lesson')}/>)}</div>:<div className="empty-state"><span className="empty-icon"><Search/></span><strong>{t.empty}</strong><span>{t.emptySub}</span><button className="button button-outline" onClick={()=>{setQuery('');setCategory(0);}}>{ar?'مسح البحث':'Clear search'}</button></div>}</section>
+        <section className="section featured-section" id="lessons"><div className="section-heading"><div><div className="eyebrow muted-eyebrow">{ar?'دروس تستاهل وقتك':'GOOD THINGS TO LEARN'}</div><h2>{t.featured}</h2><p>{t.featuredText}</p></div><button className="link-button" onClick={()=>{setCategory(0);setQuery('');}}>{t.viewAll}<ArrowRight className={ar?'flip':''} size={16}/></button></div><div className="filter-row">{t.categories.map((c,i)=><button key={c} onClick={()=>setCategory(i)} className={`filter-chip ${category===i?'selected':''}`}>{c}</button>)}</div>{loadingLessons ? (
+          <p role="status">Loading lessons...</p>
+        ) : lessonsError ? (
+          <div className="empty-state">
+            <strong>Could not load lessons</strong>
+            <span>{lessonsError}</span>
+            <button className="button button-outline" onClick={() => window.location.reload()}>
+              Retry
+            </button>
+          </div>
+        ) : filtered.length ? (
+          <div className="lesson-grid">
+            {filtered.slice(0, 4).map(item => (
+              <LessonCard key={item.id} lesson={item} lang={lang} onClick={() => go('lesson')} />
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <span className="empty-icon"><Search /></span>
+            <strong>{t.empty}</strong>
+            <span>{t.emptySub}</span>
+            <button className="button button-outline" onClick={() => { setQuery(''); setCategory(0); }}>
+              {ar ? 'مسح البحث' : 'Clear search'}
+            </button>
+          </div>
+        )}</section>
         <section className="how-section"><div className="how-intro"><div className="eyebrow"><span className="eyebrow-dot lime-dot"/>{ar?'تعلم من غير تعقيد':'SIMPLE BY DESIGN'}</div><h2>{t.how}</h2><p>{t.howText}</p><button className="button button-lime" onClick={()=>document.getElementById('lessons')?.scrollIntoView({behavior:'smooth'})}>{ar?'استكشف الدروس':'Explore lessons'}<ArrowRight className={ar?'flip':''} size={16}/></button><div className="how-deco">✳</div></div><div className="step-list">{t.steps.map((step,i)=><div className="step-item" key={step}><span className={`step-number ${i===1?'step-coral':''}`}>0{i+1}</span><div><h3>{step}</h3><p>{t.stepsText[i]}</p></div><ArrowDownLeft className="step-arrow" size={18}/></div>)}</div></section>
         <section className="teacher-banner"><div className="teacher-doodle">✳</div><div className="teacher-content"><div className="eyebrow"><span className="eyebrow-dot coral-dot"/>{ar?'للمدرسين':'FOR TEACHERS'}</div><h2>{t.teacherCta}</h2><p>{t.teacherSub}</p><button className="button button-dark" onClick={()=>go('dashboard')}>{t.startTeaching}<ArrowUpRight size={16}/></button></div><div className="teacher-stats"><div><strong>EGP</strong><span>{ar?'دخل مقابل خبرتك':'Your knowledge, valued'}</span></div><div className="stats-line"/><div><strong>∞</strong><span>{ar?'دروسك تفضل متاحة':'Lessons that last'}</span></div></div></section>
       </main> : <LessonDetails lang={lang} onBack={()=>go('home')} notify={notify} onBuy={()=>onNavigate?.('/checkout')} />}
