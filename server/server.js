@@ -11,6 +11,8 @@ app.use(express.json());
 
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/lessons", require("./routes/lessons"));
+app.use("/api/purchases", require("./routes/purchases"));
+app.use("/api/learning", require("./routes/learning"));
 
 app.get("/", (req, res) => {
     res.json({ message: "Bayenly API is running!" });

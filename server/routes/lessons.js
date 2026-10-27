@@ -421,4 +421,97 @@ async (req, res) => {
 );
 
 
+// GET /api/lessons
+// Publicly list published lesson packages
+router.get("/", async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT
+                lp.id,
+                lp.title,
+                lp.description,
+                lp.subject,
+                lp.price,
+                lp.language,
+                lp.created_at,
+                u.name AS teacher_name,
+                tp.specialization AS teacher_specialization,
+                COUNT(lv.id)::int AS video_count
+             FROM lesson_packages lp
+             JOIN users u ON u.id = lp.teacher_id
+             LEFT JOIN teacher_profiles tp ON tp.user_id = u.id
+             LEFT JOIN lesson_videos lv ON lv.package_id = lp.id
+             WHERE lp.status = 'published'
+             GROUP BY
+                lp.id,
+                u.name,
+                tp.specialization
+             ORDER BY lp.created_at DESC`
+        );
+
+        res.json({ packages: result.rows });
+    } catch (error) {
+        console.error("Browse lessons error:", error.message);
+
+        res.status(500).json({
+            message: "Unable to retrieve published lessons."
+        });
+    }
+});
+
+
+// GET /api/lessons/:id
+// Public details for one published lesson package
+router.get("/:id", async (req, res) => {
+    try {
+        const packageResult = await pool.query(
+            `SELECT
+                lp.id,
+                lp.title,
+                lp.description,
+                lp.subject,
+                lp.price,
+                lp.language,
+                lp.created_at,
+                u.name AS teacher_name,
+                tp.specialization AS teacher_specialization,
+                COUNT(lv.id)::int AS video_count
+             FROM lesson_packages lp
+             JOIN users u ON u.id = lp.teacher_id
+             LEFT JOIN teacher_profiles tp ON tp.user_id = u.id
+             LEFT JOIN lesson_videos lv ON lv.package_id = lp.id
+             WHERE lp.id = $1
+               AND lp.status = 'published'
+             GROUP BY lp.id, u.name, tp.specialization`,
+            [req.params.id]
+        );
+
+        if (packageResult.rows.length === 0) {
+            return res.status(404).json({
+                message: "Published lesson package not found."
+            });
+        }
+
+        const videosResult = await pool.query(
+            `SELECT id, title, duration_seconds, position
+             FROM lesson_videos
+             WHERE package_id = $1
+             ORDER BY position ASC`,
+            [req.params.id]
+        );
+
+        res.json({
+            package: packageResult.rows[0],
+            videos: videosResult.rows
+        });
+    } catch (error) {
+        console.error("Fetch lesson details error:", error.message);
+
+        res.status(500).json({
+            message: "Unable to retrieve lesson details."
+        });
+    }
+});
+
+
 module.exports = router;
