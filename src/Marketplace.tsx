@@ -125,7 +125,16 @@ const mapped: Lesson[] = packages.map((item, index) => {
     const c = subjectMap[selected] || selected; return matchesQuery && (category === 0 || l.subject === c || (c === 'Science' && ['Biology','Physics'].includes(l.subject)));
   }), [apiLessons,query,category,t]);
   const notify = (msg: string) => { setToast(msg); window.setTimeout(()=>setToast(''), 3200); };
-  const [selectedLessonId, setSelectedLessonId] = useState<number | null>(null);
+  const routeLessonMatch = route.match(/^\/lesson\/(\d+)$/);
+  const routeLessonId = routeLessonMatch ? Number(routeLessonMatch[1]) : null;
+
+  const [selectedLessonId, setSelectedLessonId] = useState<number | null>(
+    routeLessonId
+  );
+
+  useEffect(() => {
+    setSelectedLessonId(routeLessonId);
+  }, [routeLessonId]);
   const go = (target: Screen) => { setScreen(target); setMobileNav(false); onNavigate?.(target === 'lesson' ? '/lesson/newton' : target === 'dashboard' ? '/teacher/overview' : '/'); window.scrollTo({top:0,behavior:'smooth'}); };
   const openLesson = (id: number) => {
   setSelectedLessonId(id);
