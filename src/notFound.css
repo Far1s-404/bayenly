@@ -1,0 +1,79 @@
+.flow-content > .not-found {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-height: calc(100vh - 68px);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 48px 24px;
+  background: radial-gradient(ellipse at center, #fff 0%, #fff 22%, transparent 68%);
+  text-align: center;
+}
+
+.flow-content > .not-found::before {
+  position: absolute;
+  z-index: -1;
+  width: min(72vw, 500px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, #efecff 0%, #f5f3ff 48%, transparent 72%);
+  content: '';
+}
+
+.not-found > span {
+  color: var(--violet);
+  background: linear-gradient(135deg, var(--violet) 15%, #9585ff 58%, var(--coral));
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-size: clamp(112px, 20vw, 196px);
+  font-weight: 800;
+  letter-spacing: -0.12em;
+  line-height: 0.85;
+}
+
+.not-found h1 {
+  max-width: 16ch;
+  margin: 22px 0 0;
+  color: var(--ink);
+  font-size: clamp(25px, 4vw, 39px);
+  font-weight: 750;
+  letter-spacing: -1.5px;
+  line-height: 1.15;
+}
+
+.not-found p {
+  max-width: 440px;
+  margin: 13px 0 26px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.not-found .button {
+  min-height: 48px;
+  padding: 0 21px;
+}
+
+.rtl .not-found h1 {
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+
+@media (max-width: 760px) {
+  .flow-content > .not-found {
+    min-height: calc(100vh - 59px);
+    padding: 36px 22px;
+  }
+
+  .not-found h1 {
+    margin-top: 18px;
+    letter-spacing: -0.8px;
+  }
+
+  .not-found p {
+    max-width: 340px;
+    font-size: 13px;
+  }
+}
