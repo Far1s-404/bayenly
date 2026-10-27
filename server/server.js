@@ -10,6 +10,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use("/api/auth", require("./routes/auth"));
+app.use("/api/lessons", require("./routes/lessons"));
 
 app.get("/", (req, res) => {
     res.json({ message: "Bayenly API is running!" });
