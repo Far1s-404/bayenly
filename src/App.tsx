@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react';
 import Marketplace from './Marketplace';
 import Flows, { type PackageDraft } from './Flows';
@@ -19,17 +20,27 @@ const emptyDraft: PackageDraft = {
 };
 
 export default function App() {
-  const [route, setRoute] = useState(window.location.pathname || '/');
+  const [route, setRoute] = useState(
+    window.location.pathname + window.location.search || '/'
+  );
+
   const [lang, setLang] = useState<AppLang>('en');
   const [draft, setDraft] = useState<PackageDraft>(emptyDraft);
-  const [teacherPackageState, setTeacherPackageState] = useState(initialTeacherPackages);
-  const [orderState, setOrderState] = useState<'success' | 'pending' | 'failed'>('success');
+  const [teacherPackageState, setTeacherPackageState] =
+    useState(initialTeacherPackages);
+  const [orderState, setOrderState] = useState<
+    'success' | 'pending' | 'failed'
+  >('success');
+
   const [orderRef] = useState(
     () => `BYN-DEMO-${Math.floor(24000 + Math.random() * 899)}`
   );
 
   const nav = (path: string) => {
-    if (path !== window.location.pathname) {
+    const currentPath =
+      window.location.pathname + window.location.search;
+
+    if (path !== currentPath) {
       window.history.pushState({}, '', path);
     }
 
@@ -38,10 +49,17 @@ export default function App() {
   };
 
   useEffect(() => {
-    const back = () => setRoute(window.location.pathname || '/');
+    const back = () => {
+      setRoute(
+        window.location.pathname + window.location.search || '/'
+      );
+    };
 
     window.addEventListener('popstate', back);
-    return () => window.removeEventListener('popstate', back);
+
+    return () => {
+      window.removeEventListener('popstate', back);
+    };
   }, []);
 
   useEffect(() => {
@@ -49,13 +67,15 @@ export default function App() {
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
   }, [lang]);
 
-  const isLessonRoute = /^\/lesson\/[^/]+$/.test(route);
+  const isLessonRoute = /^\/lesson\/[^/]+$/.test(
+    window.location.pathname
+  );
 
   if (route === '/' || isLessonRoute) {
     return (
       <Marketplace
-        key={route === '/' ? 'home' : route}
-        route={route}
+        key={isLessonRoute ? window.location.pathname : 'home'}
+        route={window.location.pathname}
         lang={lang}
         setLang={setLang}
         onNavigate={nav}

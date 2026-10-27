@@ -4,6 +4,8 @@ import type { AppLang } from './App';
 import type { Lesson } from './data';
 import { studentPurchases, teacherPackages, mediaLibrary, adminQueue } from './mockRepository';
 
+const API_BASE = 'http://localhost:3000/api';
+
 type VideoDraft = { title: string; description: string; duration: string };
 export type PackageDraft = { title: string; description: string; subject: string; grade: string; language: string; objectives: string; price: number; videos: VideoDraft[]; resources: string[]; thumbnail?: string };
 type Props = { route: string; lang: AppLang; setLang: (l: AppLang) => void; navigate: (path: string) => void; draft: PackageDraft; setDraft: Dispatch<SetStateAction<PackageDraft>>; packages: typeof teacherPackages; setPackages: Dispatch<SetStateAction<typeof teacherPackages>>; orderState: 'success'|'pending'|'failed'; setOrderState: (s:'success'|'pending'|'failed')=>void; orderRef: string; lesson: Lesson };
@@ -16,7 +18,7 @@ export default function Flows(p:Props) {
   let content;
   if (['/login','/register','/forgot-password'].includes(route)) content=<Auth route={route} lang={lang} navigate={navigate}/>;
   else if (['/student/overview','/student/learning','/student/orders','/student/profile'].includes(route)) content=<StudentWorkspace route={route} lang={lang} navigate={navigate}/>;
-  else if (route==='/checkout') content=<Checkout lang={lang} lesson={lesson} navigate={navigate} orderState={orderState} setOrderState={setOrderState}/>;
+  else if (route.startsWith('/checkout')) content=<Checkout lang={lang} lesson={lesson} navigate={navigate} orderState={orderState} setOrderState={setOrderState}/>;
   else if (route==='/confirmation') content=<Confirmation lang={lang} lesson={lesson} orderRef={orderRef} navigate={navigate}/>;
   else if (route==='/learn/demo') content=<Learning lang={lang} lesson={lesson} navigate={navigate}/>;
   else if (route==='/teacher/package/new'||/^\/teacher\/package\/[^/]+\/(edit|preview)$/.test(route)) content=<Wizard lang={lang} draft={draft} setDraft={setDraft} packages={packages} setPackages={setPackages} navigate={navigate} route={route}/>;
@@ -28,7 +30,94 @@ export default function Flows(p:Props) {
 }
 
 function Auth({route,lang,navigate}:{route:string;lang:AppLang;navigate:(p:string)=>void}) { const ar=lang==='ar'; const c=T[lang]; const [role,setRole]=useState<'student'|'teacher'|'admin'>('student');const [show,setShow]=useState(false);const [error,setError]=useState('');const [success,setSuccess]=useState('');const [values,setValues]=useState({name:'',email:'',phone:'',password:'',confirm:'',remember:false,terms:false});const register=route==='/register',forgot=route==='/forgot-password';const set=(key:string,value:string|boolean)=>setValues(v=>({...v,[key]:value}));
-  const submit=(e:FormEvent)=>{e.preventDefault();setError('');setSuccess('');if(forgot){if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)){setError(tx(lang,'Enter a valid email address.','أدخل بريدًا إلكترونيًا صحيحًا.'));return;}setSuccess(tx(lang,'Demo only: no reset email was sent. You can return to sign in.','نموذج تجريبي: لم يتم إرسال رسالة. يمكنك العودة لتسجيل الدخول.'));return;}if(register){if(!values.name||!values.email||!values.phone||!values.password||!values.confirm){setError(c.required);return;}if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)){setError(tx(lang,'Enter a valid email address.','أدخل بريدًا إلكترونيًا صحيحًا.'));return;}if(values.password.length<8){setError(tx(lang,'Use at least 8 characters for the demo password.','استخدم ٨ أحرف على الأقل لكلمة المرور التجريبية.'));return;}if(values.password!==values.confirm){setError(tx(lang,'Passwords do not match.','كلمتا المرور غير متطابقتين.'));return;}if(!values.terms){setError(tx(lang,'Please accept the demo terms to continue.','يرجى قبول الشروط التجريبية للمتابعة.'));return;}setSuccess(tx(lang,'Demo registration complete. Continue to the demo login. No account was created.','اكتمل التسجيل التجريبي. انتقل إلى تسجيل الدخول التجريبي. لم يتم إنشاء حساب.'));return;}if(!values.email||!values.password){setError(c.required);return;}setSuccess(tx(lang,`Demo sign-in selected: ${role}. No session was created.`, `تم اختيار الدخول التجريبي: ${role==='student'?'طالب':role==='teacher'?'مدرّس':'إدارة'}. لم يتم إنشاء جلسة.`));};
+  
+const submit = async (e: FormEvent) => {
+  e.preventDefault();
+  setError('');
+  setSuccess('');
+
+  if (forgot) {
+    setError('Password reset is not connected yet.');
+    return;
+  }
+
+  if (register) {
+    if (
+      !values.name.trim() ||
+      !values.email.trim() ||
+      !values.password ||
+      !values.confirm
+    ) {
+      setError(c.required);
+      return;
+    }
+
+    if (values.password !== values.confirm) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    if (!values.terms) {
+      setError('Please accept the terms and conditions.');
+      return;
+    }
+  } else if (!values.email.trim() || !values.password) {
+    setError(c.required);
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `${API_BASE}/auth/${register ? 'register' : 'login'}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          register
+            ? {
+                name: values.name.trim(),
+                email: values.email.trim(),
+              phone: values.phone.trim(),
+              password: values.password,
+            }
+            : {
+                email: values.email.trim(),
+                password: values.password,
+              }
+        ),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      setError(data.message || 'Something went wrong.');
+      return;
+    }
+
+    if (register) {
+      setSuccess('Account created! You can now log in.');
+      navigate('/login');
+      return;
+    }
+
+    localStorage.setItem('bayenly_token', data.token);
+    localStorage.setItem('bayenly_user', JSON.stringify(data.user));
+
+    navigate(
+      data.user.role === 'admin'
+        ? '/admin/overview'
+        : data.user.role === 'teacher'
+          ? '/teacher/overview'
+          : '/student/overview'
+    );
+  } catch {
+    setError(
+      'Cannot connect to the server. Make sure the Bayenly backend is running.'
+    );
+  }
+};
+
   return <div className="auth-wrap"><div className="auth-aside"><div className="auth-visual-mark">ب</div><div className="eyebrow">{tx(lang,'LEARN ON YOUR TERMS','تعلّم على طريقتك')}</div><h1>{register?tx(lang,'Your next “aha” moment starts here.','لحظة الفهم التالية تبدأ من هنا.'):forgot?tx(lang,'A fresh start, coming up.','بداية جديدة قادمة.'):tx(lang,'Welcome back to learning.','أهلًا بعودتك للتعلّم.')}</h1><p>{tx(lang,'One-time lesson packages from teachers who make the hard stuff click.','باقات دروس بدفعة واحدة من مدرسين يبسّطون أصعب الأفكار.')}</p><div className="auth-quote"><Star size={15} fill="currentColor"/> {tx(lang,'“I finally get physics—and I can replay it whenever I need.”','“أخيرًا فهمت الفيزياء، وأقدر أراجع الشرح وقت ما أحتاج.”')}<small>{tx(lang,'— A demo student story','— قصة طالب تجريبية')}</small></div></div><section className="auth-card"><div className="auth-card-heading"><div><span className="eyebrow muted-eyebrow">{forgot?c.forgot:register?tx(lang,'JOIN BAYYENLY','انضم إلى بيّنلي'):tx(lang,'YOUR LEARNING SPACE','مساحة تعلّمك')}</span><h2>{forgot?tx(lang,'Reset your password','استعادة كلمة المرور'):register?tx(lang,'Create your account','أنشئ حسابك'):tx(lang,'Sign in','تسجيل الدخول')}</h2><p>{forgot?tx(lang,'Enter your email for a generic demo confirmation.','أدخل بريدك لعرض رسالة تأكيد تجريبية.'):register?tx(lang,'A few details and you’re ready to explore.','بعض التفاصيل وبعدها يمكنك الاستكشاف.'):tx(lang,'Use a demo account or choose a role below.','استخدم حسابًا تجريبيًا أو اختر دورًا أدناه.')}</p></div></div>
     {!register&&!forgot&&<><div className="demo-account-box"><strong><Users size={15}/>{c.demoAccounts}</strong><span>Student: student@demo.bayenly.test · Teacher: teacher@demo.bayenly.test · Admin: admin@demo.bayenly.test</span><small>Password: Demo1234 (demo only)</small><div className="role-choices">{(['student','teacher','admin'] as const).map(r=><button type="button" className={role===r?'selected':''} key={r} onClick={()=>setRole(r)}>{r==='student'?c.student:r==='teacher'?c.teacher:c.admin}</button>)}</div></div></>}
     <form className="flow-form" onSubmit={submit} noValidate>{register&&<Field label={tx(lang,'Full name','الاسم الكامل')} value={values.name} onChange={v=>set('name',v)} placeholder={tx(lang,'Your name','اسمك')} required/>}<Field label={tx(lang,'Email address','البريد الإلكتروني')} value={values.email} onChange={v=>set('email',v)} placeholder="you@example.com" type="email" required/>{register&&<Field label={tx(lang,'Phone number','رقم الهاتف')} value={values.phone} onChange={v=>set('phone',v)} placeholder="+20 10 0000 0000" type="tel" required prefix="🇪🇬 +20"/>}{!forgot&&<Field label={register?tx(lang,'Password','كلمة المرور'):tx(lang,'Password','كلمة المرور')} value={values.password} onChange={v=>set('password',v)} placeholder="••••••••" type={show?'text':'password'} required trailing={<button type="button" className="inline-toggle" onClick={()=>setShow(!show)}>{show?tx(lang,'Hide','إخفاء'):tx(lang,'Show','إظهار')}</button>}/>} {register&&<Field label={tx(lang,'Confirm password','تأكيد كلمة المرور')} value={values.confirm} onChange={v=>set('confirm',v)} placeholder="••••••••" type={show?'text':'password'} required/>}
@@ -38,9 +127,231 @@ function Auth({route,lang,navigate}:{route:string;lang:AppLang;navigate:(p:strin
 }
 function Field({label,value,onChange,placeholder,type='text',required=false,trailing,prefix}:{label:string;value:string;onChange:(v:string)=>void;placeholder?:string;type?:string;required?:boolean;trailing?:React.ReactNode;prefix?:string}){return <label className="field"><span>{label}{required&&<i> *</i>}</span><div className={`field-control ${prefix?'has-prefix':''}`}>{prefix&&<span className="field-prefix">{prefix}</span>}<input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} required={required}/>{trailing}</div></label>;}
 
-function WorkspaceShell({lang,title,sections,active,navigate,children}:{lang:AppLang;title:string;sections:{label:string;path:string;icon:typeof Home}[];active:string;navigate:(p:string)=>void;children:ReactNode}){const ar=lang==='ar';const [open,setOpen]=useState(false);const role=sections[0]?.path.split('/')[1]||'student';const admin=role==='admin';const roleName=role==='teacher'?'Omar Hassan':role==='admin'?'Admin reviewer':'Sara Ahmed';const roleInitial=role==='teacher'?'OH':role==='admin'?'A':'SA';const roleSpace=role==='teacher'?T[lang].teacherSpace:role==='admin'?T[lang].adminSpace:T[lang].studentSpace;return <div className={`workspace-shell ${admin?'admin-workspace':''}`}><aside className={`workspace-sidebar ${open?'open':''}`}><button className="brand" onClick={()=>navigate('/')}><span className="brand-mark">ب</span><span>bayyenly<span className="brand-dot">.</span></span></button><div className="workspace-user"><span className="workspace-avatar">{roleInitial}</span><div><strong>{roleName}</strong><small>{roleSpace}</small></div></div><nav>{sections.map(s=>{const Icon=s.icon;return <button className={active===s.path?'active':''} onClick={()=>{navigate(s.path);setOpen(false)}} key={s.path}><Icon size={17}/>{s.label}<ChevronRight className={ar?'flip':''} size={14}/></button>})}</nav><button className="side-return" onClick={()=>navigate('/')}><ArrowLeft className={ar?'flip':''} size={16}/>{T[lang].home}</button></aside><main className="workspace-main"><header className="workspace-heading"><button className="workspace-mobile-toggle" onClick={()=>setOpen(!open)} aria-label="Toggle navigation"><Menu/></button><div><span className="eyebrow muted-eyebrow">{roleSpace}</span><h1>{role==='student'?(sections.find(s=>s.path===active)?.label||title):title}</h1></div><span className="demo-pill"><i/>{tx(lang,'Illustrative data only','بيانات توضيحية فقط')}</span></header>{children}</main></div>}
+type BayyenlyUser = {
+  id?: number | string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  role?: 'student' | 'teacher' | 'admin';
+};
 
-function StudentWorkspace({route,lang,navigate}:{route:string;lang:AppLang;navigate:(p:string)=>void}){const ar=lang==='ar';const sec=pathSection(route);const sections=[{label:T[lang].overview,path:'/student/overview',icon:LayoutDashboard},{label:T[lang].learning,path:'/student/learning',icon:BookOpen},{label:T[lang].orders,path:'/student/orders',icon:ShoppingBag},{label:T[lang].profile,path:'/student/profile',icon:User}];const [filter,setFilter]=useState<'all'|'progress'|'completed'>('all');const [search,setSearch]=useState('');const [profile,setProfile]=useState({name:'Sara Ahmed',email:'sara@example.com',phone:'+20 10 1234 5678'});const [saved,setSaved]=useState(false);const current=studentPurchases.filter(p=>(filter==='all'||(filter==='progress'?p.progress<100:p.progress===100))&&p.title.toLowerCase().includes(search.toLowerCase()));const content=sec==='overview'?<><div className="welcome-card"><div><span className="eyebrow muted-eyebrow">{tx(lang,'TUESDAY · 27 OCT 2026','الثلاثاء · ٢٧ أكتوبر ٢٠٢٦')}</span><h2>{tx(lang,'A little progress goes a long way, Sara.','كل خطوة صغيرة تقرّبك يا سارة.')}</h2><p>{tx(lang,'Pick up right where you left off. Your lessons are here whenever you are.','كمّلي من آخر نقطة. دروسك هنا وقت ما تحتاجيها.')}</p><button className="button button-primary" onClick={()=>navigate('/student/learning')}>{T[lang].continue}<ArrowRight className={ar?'flip':''} size={15}/></button></div><span className="welcome-mark">✳</span></div><div className="summary-grid"><Summary icon={Package} label={tx(lang,'Packages purchased','الباقات المشتراة')} value="3" color="violet"/><Summary icon={Check} label={tx(lang,'Lessons completed','الدروس المكتملة')} value="14" color="lime"/><Summary icon={Clock3} label={tx(lang,'Learning streak','أيام التعلّم المتتالية')} value={tx(lang,'4 days','٤ أيام')} color="coral"/></div><SectionHeader title={tx(lang,'Continue learning','تابعي التعلّم')} action={tx(lang,'See all','عرض الكل')} onAction={()=>navigate('/student/learning')}/><div className="learning-grid">{studentPurchases.filter(p=>p.progress<100).slice(0,2).map(p=><LearningCard key={p.id} item={p} lang={lang} navigate={navigate}/>)}</div><p className="demo-disclaimer"><ShieldCheck size={14}/>{T[lang].demoNote}</p></>:sec==='learning'?<><div className="panel-heading flow-panel-heading"><div><h2>{T[lang].learning}</h2><p>{tx(lang,'Packages you have in your demo library.','الباقات الموجودة في مكتبتك التجريبية.')}</p></div><span className="count-pill">{studentPurchases.length} {tx(lang,'packages','باقات')}</span></div><div className="toolbar"><div className="search-field"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder={tx(lang,'Search your lessons…','ابحثي في دروسك…')}/></div><div className="filter-tabs">{(['all','progress','completed'] as const).map((f,i)=><button key={f} className={filter===f?'active':''} onClick={()=>setFilter(f)}>{[T[lang].all,T[lang].inProgress,T[lang].completed][i]}</button>)}</div></div>{current.length?<div className="learning-grid">{current.map(item=><LearningCard key={item.id} item={item} lang={lang} navigate={navigate}/>)}</div>:<Empty icon={BookOpen} title={tx(lang,'Nothing in this view yet','لا توجد دروس هنا بعد')} text={tx(lang,'Try another filter or browse packages in the marketplace.','جرّبي فلترًا آخر أو استكشفي باقات السوق.')} button={T[lang].home} action={()=>navigate('/')}/>}</>:sec==='orders'?<><div className="panel-heading flow-panel-heading"><div><h2>{T[lang].orders}</h2><p>{tx(lang,'A record of your demo orders.','سجل طلباتك التجريبية.')}</p></div></div><DataTable headers={[tx(lang,'PACKAGE','الباقة'),tx(lang,'PURCHASE DATE','تاريخ الشراء'),tx(lang,'AMOUNT','المبلغ'),tx(lang,'PAYMENT','الدفع'),tx(lang,'ORDER REFERENCE','رقم الطلب')]} rows={studentPurchases.map(p=>[p.title,p.purchasedAt,`EGP ${p.price}`,tx(lang,'Paid · Demo','مدفوع · تجريبي'),p.orderRef])}/></>:<><div className="panel profile-form"><h2>{tx(lang,'Account details','بيانات الحساب')}</h2><p>{tx(lang,'Update the temporary profile shown in this demo.','حدّثي بيانات الملف المؤقتة في هذا النموذج.')}</p><div className="profile-avatar-large">SA</div><Field label={tx(lang,'Full name','الاسم الكامل')} value={profile.name} onChange={v=>setProfile({...profile,name:v})}/><Field label={tx(lang,'Email address','البريد الإلكتروني')} value={profile.email} onChange={v=>setProfile({...profile,email:v})}/><Field label={tx(lang,'Phone number','رقم الهاتف')} value={profile.phone} onChange={v=>setProfile({...profile,phone:v})}/><button className="button button-primary" onClick={()=>{setSaved(true);setTimeout(()=>setSaved(false),2500)}}>{saved?<><Check size={15}/>{tx(lang,'Saved temporarily','تم الحفظ مؤقتًا')}</>:T[lang].save}</button></div></>;
+function getCurrentUser(): BayyenlyUser | null {
+  try {
+    const stored = localStorage.getItem('bayenly_user');
+
+    if (!stored) return null;
+
+    return JSON.parse(stored) as BayyenlyUser;
+  } catch {
+    return null;
+  }
+}
+
+
+function WorkspaceShell({
+  lang,
+  title,
+  sections,
+  active,
+  navigate,
+  children,
+}: {
+  lang: AppLang;
+  title: string;
+  sections: { label: string; path: string; icon: typeof Home }[];
+  active: string;
+  navigate: (p: string) => void;
+  children: ReactNode;
+}) {
+  const ar = lang === 'ar';
+  const [open, setOpen] = useState(false);
+
+  const role = sections[0]?.path.split('/')[1] || 'student';
+  const admin = role === 'admin';
+  const user = getCurrentUser();
+
+  const fallbackName =
+    role === 'teacher'
+      ? 'Teacher'
+      : role === 'admin'
+        ? 'Admin reviewer'
+        : 'Student';
+
+  const roleName = user?.name?.trim() || user?.email || fallbackName;
+
+  const roleInitial = roleName
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
+
+  const roleSpace =
+    role === 'teacher'
+      ? T[lang].teacherSpace
+      : role === 'admin'
+        ? T[lang].adminSpace
+        : T[lang].studentSpace;
+
+  return (
+    <div className={`workspace-shell ${admin ? 'admin-workspace' : ''}`}>
+      <aside className={`workspace-sidebar ${open ? 'open' : ''}`}>
+        <button className="brand" onClick={() => navigate('/')}>
+          <span className="brand-mark">ب</span>
+          <span>
+            bayyenly<span className="brand-dot">.</span>
+          </span>
+        </button>
+
+        <div className="workspace-user">
+          <span className="workspace-avatar">{roleInitial}</span>
+          <div>
+            <strong>{roleName}</strong>
+            <small>{roleSpace}</small>
+          </div>
+        </div>
+
+        <nav>
+          {sections.map((s) => {
+            const Icon = s.icon;
+
+            return (
+              <button
+                className={active === s.path ? 'active' : ''}
+                onClick={() => {
+                  navigate(s.path);
+                  setOpen(false);
+                }}
+                key={s.path}
+              >
+                <Icon size={17} />
+                {s.label}
+                <ChevronRight
+                  className={ar ? 'flip' : ''}
+                  size={14}
+                />
+              </button>
+            );
+          })}
+        </nav>
+
+        <button className="side-return" onClick={() => navigate('/')}>
+          <ArrowLeft className={ar ? 'flip' : ''} size={16} />
+          {T[lang].home}
+        </button>
+      </aside>
+
+      <main className="workspace-main">
+        <header className="workspace-heading">
+          <button
+            className="workspace-mobile-toggle"
+            onClick={() => setOpen(!open)}
+            aria-label="Toggle navigation"
+          >
+            <Menu />
+          </button>
+
+          <div>
+            <span className="eyebrow muted-eyebrow">{roleSpace}</span>
+            <h1>
+              {role === 'student'
+                ? sections.find((s) => s.path === active)?.label || title
+                : title}
+            </h1>
+          </div>
+
+          <span className="demo-pill">
+            <i />
+            {tx(lang, 'Illustrative data only', 'بيانات توضيحية فقط')}
+          </span>
+        </header>
+
+        {children}
+      </main>
+    </div>
+  );
+}
+function StudentWorkspace({route,lang,navigate}:{route:string;lang:AppLang;navigate:(p:string)=>void}){const ar=lang==='ar';const sec=pathSection(route);const sections=[{label:T[lang].overview,path:'/student/overview',icon:LayoutDashboard},{label:T[lang].learning,path:'/student/learning',icon:BookOpen},{label:T[lang].orders,path:'/student/orders',icon:ShoppingBag},{label:T[lang].profile,path:'/student/profile',icon:User}];const [filter,setFilter]=useState<'all'|'progress'|'completed'>('all');const [search,setSearch]=useState('');const currentUser = getCurrentUser();
+
+const [profile, setProfile] = useState(() => ({
+  name: currentUser?.name ?? '',
+  email: currentUser?.email ?? '',
+  phone: currentUser?.phone ?? '',
+}));
+
+const [saved, setSaved] = useState(false);
+const [saving, setSaving] = useState(false);
+const [saveError, setSaveError] = useState('');
+
+const initials =
+  profile.name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase() || '?';
+
+async function handleSaveProfile() {
+  const user = getCurrentUser();
+  const token = localStorage.getItem('bayenly_token');
+
+  setSaved(false);
+  setSaveError('');
+
+  if (!user || !token) {
+    setSaveError(tx(lang, 'Please log in before saving your profile.', 'يرجى تسجيل الدخول قبل حفظ الملف الشخصي.'));
+    return;
+  }
+
+  setSaving(true);
+
+  try {
+    const response = await fetch(`${API_BASE}/auth/me`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        name: profile.name.trim(),
+        email: profile.email.trim(),
+        phone: profile.phone.trim(),
+      }),
+    });
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(data?.message || tx(lang, 'Unable to save profile changes.', 'تعذر حفظ تغييرات الملف الشخصي.'));
+    }
+
+    if (!data?.user) {
+      throw new Error(tx(lang, 'The server returned an invalid profile response.', 'أعاد الخادم بيانات ملف شخصي غير صالحة.'));
+    }
+
+    const updatedUser = { ...user, ...data.user };
+    localStorage.setItem('bayenly_user', JSON.stringify(updatedUser));
+    setProfile({
+      name: updatedUser.name ?? '',
+      email: updatedUser.email ?? '',
+      phone: updatedUser.phone ?? '',
+    });
+    setSaved(true);
+  } catch (error) {
+    setSaveError(error instanceof Error ? error.message : tx(lang, 'Unable to save profile changes.', 'تعذر حفظ تغييرات الملف الشخصي.'));
+  } finally {
+    setSaving(false);
+  }
+}
+
+const current = studentPurchases.filter(
+  (p) =>
+    (filter === 'all' ||
+      (filter === 'progress' ? p.progress < 100 : p.progress === 100)) &&
+    p.title.toLowerCase().includes(search.toLowerCase())
+);const content=sec==='overview'?<><div className="welcome-card"><div><span className="eyebrow muted-eyebrow">{tx(lang,'TUESDAY · 27 OCT 2026','الثلاثاء · ٢٧ أكتوبر ٢٠٢٦')}</span><h2>{tx(lang,'A little progress goes a long way, Sara.','كل خطوة صغيرة تقرّبك يا سارة.')}</h2><p>{tx(lang,'Pick up right where you left off. Your lessons are here whenever you are.','كمّلي من آخر نقطة. دروسك هنا وقت ما تحتاجيها.')}</p><button className="button button-primary" onClick={()=>navigate('/student/learning')}>{T[lang].continue}<ArrowRight className={ar?'flip':''} size={15}/></button></div><span className="welcome-mark">✳</span></div><div className="summary-grid"><Summary icon={Package} label={tx(lang,'Packages purchased','الباقات المشتراة')} value="3" color="violet"/><Summary icon={Check} label={tx(lang,'Lessons completed','الدروس المكتملة')} value="14" color="lime"/><Summary icon={Clock3} label={tx(lang,'Learning streak','أيام التعلّم المتتالية')} value={tx(lang,'4 days','٤ أيام')} color="coral"/></div><SectionHeader title={tx(lang,'Continue learning','تابعي التعلّم')} action={tx(lang,'See all','عرض الكل')} onAction={()=>navigate('/student/learning')}/><div className="learning-grid">{studentPurchases.filter(p=>p.progress<100).slice(0,2).map(p=><LearningCard key={p.id} item={p} lang={lang} navigate={navigate}/>)}</div><p className="demo-disclaimer"><ShieldCheck size={14}/>{T[lang].demoNote}</p></>:sec==='learning'?<><div className="panel-heading flow-panel-heading"><div><h2>{T[lang].learning}</h2><p>{tx(lang,'Packages you have in your demo library.','الباقات الموجودة في مكتبتك التجريبية.')}</p></div><span className="count-pill">{studentPurchases.length} {tx(lang,'packages','باقات')}</span></div><div className="toolbar"><div className="search-field"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder={tx(lang,'Search your lessons…','ابحثي في دروسك…')}/></div><div className="filter-tabs">{(['all','progress','completed'] as const).map((f,i)=><button key={f} className={filter===f?'active':''} onClick={()=>setFilter(f)}>{[T[lang].all,T[lang].inProgress,T[lang].completed][i]}</button>)}</div></div>{current.length?<div className="learning-grid">{current.map(item=><LearningCard key={item.id} item={item} lang={lang} navigate={navigate}/>)}</div>:<Empty icon={BookOpen} title={tx(lang,'Nothing in this view yet','لا توجد دروس هنا بعد')} text={tx(lang,'Try another filter or browse packages in the marketplace.','جرّبي فلترًا آخر أو استكشفي باقات السوق.')} button={T[lang].home} action={()=>navigate('/')}/>}</>:sec==='orders'?<><div className="panel-heading flow-panel-heading"><div><h2>{T[lang].orders}</h2><p>{tx(lang,'A record of your demo orders.','سجل طلباتك التجريبية.')}</p></div></div><DataTable headers={[tx(lang,'PACKAGE','الباقة'),tx(lang,'PURCHASE DATE','تاريخ الشراء'),tx(lang,'AMOUNT','المبلغ'),tx(lang,'PAYMENT','الدفع'),tx(lang,'ORDER REFERENCE','رقم الطلب')]} rows={studentPurchases.map(p=>[p.title,p.purchasedAt,`EGP ${p.price}`,tx(lang,'Paid · Demo','مدفوع · تجريبي'),p.orderRef])}/></>:<><div className="panel profile-form"><h2>{tx(lang,'Account details','بيانات الحساب')}</h2><p>{tx(lang,'Update the profile details saved to your account.','حدّثي بيانات الملف الشخصي المحفوظة في حسابك.')}</p><div className="profile-avatar-large">{initials}</div><Field label={tx(lang,'Full name','الاسم الكامل')} value={profile.name} onChange={v=>setProfile({...profile,name:v})}/><Field label={tx(lang,'Email address','البريد الإلكتروني')} value={profile.email} onChange={v=>setProfile({...profile,email:v})}/><Field label={tx(lang,'Phone number','رقم الهاتف')} value={profile.phone} onChange={v=>setProfile({...profile,phone:v})}/>{saveError&&<div className="inline-error" role="alert">{saveError}</div>}<button className="button button-primary" onClick={handleSaveProfile} disabled={saving}>{saving?tx(lang,'Saving…','جارٍ الحفظ…'):saved?<><Check size={15}/>{tx(lang,'Saved','تم الحفظ')}</>:T[lang].save}</button></div></>;
  return <WorkspaceShell lang={lang} title={tx(lang,'My Learning','تعلّمي')} sections={sections} active={route} navigate={navigate}><div className="workspace-content">{content}</div></WorkspaceShell>}
 function LearningCard({item,lang,navigate}:{item:typeof studentPurchases[number];lang:AppLang;navigate:(p:string)=>void}){const ar=lang==='ar';return <article className="learning-card"><div className={`learning-art art-${item.color}`}><span>{item.art}</span><span className="learning-art-videos"><Video size={13}/>{item.videos} {T[lang].videos}</span></div><div className="learning-card-body"><span className="lesson-meta"><b>{item.subject}</b><i/> {item.grade}</span><h3>{item.title}</h3><p className="learning-teacher"><span className="teacher-avatar">{item.teacher.split(' ').map(x=>x[0]).slice(0,2).join('')}</span>{item.teacher}<span className="last-access">{ar?'آخر دخول: ':'Last viewed: '}{item.lastAccessed}</span></p><div className="progress-line"><span style={{width:`${item.progress}%`}}/></div><div className="progress-caption"><span>{item.progress}% {ar?'مكتمل':'complete'}</span><button className="button button-primary" onClick={()=>navigate('/learn/demo')}>{item.progress===100?tx(lang,'Review lessons','مراجعة الدروس'):T[lang].continue}<ArrowRight className={ar?'flip':''} size={14}/></button></div></div></article>}
 function Summary({icon:Icon,label,value,color}:{icon:typeof Package;label:string;value:string;color:string}){return <div className="summary-card"><span className={`summary-icon metric-${color}`}><Icon size={18}/></span><span>{label}</span><strong>{value}</strong></div>}
@@ -76,7 +387,368 @@ function Wizard({lang,draft,setDraft,packages,setPackages,navigate,route}:{lang:
  {error&&<p role="alert" className="inline-error">{error}</p>}{step<4&&<div className="wizard-footer">{step>1&&<button className="button button-outline" onClick={()=>setStep(step-1)}>{tx(lang,'Previous','السابق')}</button>}<button className="button button-primary" onClick={next}>{tx(lang,'Continue','متابعة')}<ArrowRight className={ar?'flip':''}/></button></div>}</div>{confirm&&<Modal title={confirmStatus==='Published'?tx(lang,'Publish package in this demo?','نشر الباقة في النموذج؟'):tx(lang,'Submit for review?','إرسال للمراجعة؟')} message={tx(lang,'This changes only temporary demo state. No package is actually published.','سيغيّر هذا الحالة التجريبية فقط. لن يتم نشر الباقة فعليًا.')} cancel={T[lang].cancel} confirm={T[lang].confirm} onCancel={()=>setConfirm(false)} onConfirm={()=>{setConfirm(false);savePackage(confirmStatus)}}/>}</div>
 }
 
-function Checkout({lang,lesson,navigate,orderState,setOrderState}:{lang:AppLang;lesson:Lesson;navigate:(p:string)=>void;orderState:'success'|'pending'|'failed';setOrderState:(s:'success'|'pending'|'failed')=>void}){const ar=lang==='ar';const [method,setMethod]=useState('card');const [accepted,setAccepted]=useState(false);const [step,setStep]=useState(1);const [feedback,setFeedback]=useState('');const submit=(e:FormEvent)=>{e.preventDefault();if(!accepted){setFeedback(tx(lang,'Accept the demo terms to continue.','وافق على الشروط التجريبية للمتابعة.'));return;}setFeedback('');setStep(2)};return <div className="checkout-page"><button className="inline-link" onClick={()=>navigate('/lesson/newton')}><ArrowLeft className={ar?'flip':''}/>{tx(lang,'Back to lesson','العودة إلى الدرس')}</button><div className="checkout-grid"><section><span className="eyebrow muted-eyebrow">{tx(lang,'DEMO CHECKOUT','إتمام تجريبي')}</span><h1>{tx(lang,'Get the full lesson package','احصل على باقة الدروس')}</h1><p className="muted-copy">{tx(lang,'No provider is contacted. No card details or wallet PINs are collected.','لا يتم التواصل مع مزود دفع ولا يتم جمع بيانات بطاقة أو رقم محفظة.')}</p>{step===1?<form onSubmit={submit}><div className="panel payment-panel"><h2>{tx(lang,'Choose a demo payment method','اختر وسيلة دفع تجريبية')}</h2>{[['card',tx(lang,'Bank card','بطاقة بنكية'),CreditCard],['wallet',tx(lang,'Mobile wallet','محفظة إلكترونية'),Wallet],['meeza','Meeza',BadgeCheck]].map(([id,label,Icon])=>{const I=Icon as typeof CreditCard;return <button type="button" key={String(id)} className={'payment-method '+(method===id?'selected':'')} onClick={()=>setMethod(String(id))}><I size={18}/><span>{String(label)}<small>{tx(lang,'Demo selection only; no payment details','اختيار تجريبي فقط؛ لا توجد بيانات دفع')}</small></span>{method===id&&<Check size={15}/>}</button>})}<div className="checkout-no-card"><LockKeyhole size={16}/>{tx(lang,'Never enter a card number or wallet PIN in this prototype.','لا تدخل رقم البطاقة أو الرقم السري للمحفظة في هذا النموذج.')}</div><label className="check-label"><input type="checkbox" checked={accepted} onChange={e=>setAccepted(e.target.checked)}/>{tx(lang,'I accept the demo order terms; no charge will be made.','أوافق على شروط الطلب التجريبي؛ لن يتم تحصيل أي مبلغ.')}</label>{feedback&&<p className="inline-error">{feedback}</p>}<button className="button button-primary flow-submit">{tx(lang,'Review order','مراجعة الطلب')}<ArrowRight className={ar?'flip':''}/></button></div></form>:<div className="panel confirmation-panel"><span className="confirmation-icon"><ShieldCheck size={26}/></span><h2>{tx(lang,'Confirm demo order','تأكيد الطلب التجريبي')}</h2><p>{tx(lang,'Choose a simulated payment result. No provider is contacted.','اختر نتيجة دفع محاكاة. لا يتم التواصل مع مزود دفع.')}</p><label className="field"><span>{tx(lang,'Demo result','النتيجة التجريبية')}</span><select value={orderState} onChange={e=>setOrderState(e.target.value as 'success'|'pending'|'failed')}><option value="success">{tx(lang,'Successful demo','نجاح تجريبي')}</option><option value="pending">{tx(lang,'Pending demo','قيد الانتظار')}</option><option value="failed">{tx(lang,'Failed demo','فشل تجريبي')}</option></select></label><div className="confirm-actions"><button className="button button-outline" onClick={()=>setStep(1)}>{tx(lang,'Back','رجوع')}</button><button className="button button-primary" onClick={()=>orderState==='success'?navigate('/confirmation'):setFeedback(orderState==='pending'?tx(lang,'Pending demo. No charge was made.','الطلب معلّق تجريبيًا. لم يتم تحصيل مبلغ.'):tx(lang,'Payment failed in the demo. No charge was made.','فشلت المحاكاة. لم يتم تحصيل مبلغ.'))}>{tx(lang,'Show result','عرض النتيجة')}</button></div>{feedback&&<p role="status" className={orderState==='failed'?'inline-error':'inline-success'}>{feedback}</p>}</div>}</section><aside className="panel order-summary"><span className="eyebrow muted-eyebrow">{tx(lang,'ORDER SUMMARY','ملخص الطلب')}</span><div className="order-product"><span className="order-art art-violet">◉</span><div><strong>{lesson.title}</strong><small>Omar Hassan · {lesson.subject}</small><small>8 {T[lang].videos} · 2h 40m</small></div></div><div className="summary-line"><span>{tx(lang,'One-time package price','سعر الباقة لمرة واحدة')}</span><strong>EGP {lesson.price}</strong></div><div className="summary-total"><span>{tx(lang,'Total · EGP','الإجمالي · ج.م')}</span><strong>EGP {lesson.price}</strong></div><p>{tx(lang,'One purchase. Ongoing access. No recurring charges.','شراء مرة واحدة ووصول مستمر. بلا رسوم متكررة.')}</p></aside></div></div>}
+
+function Checkout({
+  lang,
+  lesson,
+  navigate,
+  orderState,
+  setOrderState,
+}: {
+  lang: AppLang;
+  lesson: Lesson;
+  navigate: (p: string) => void;
+  orderState: 'success' | 'pending' | 'failed';
+  setOrderState: (s: 'success' | 'pending' | 'failed') => void;
+}) {
+  const ar = lang === 'ar';
+  const API_BASE = 'http://localhost:3000/api';
+
+  const [method, setMethod] = useState('card');
+  const [accepted, setAccepted] = useState(false);
+  const [step, setStep] = useState(1);
+  const [feedback, setFeedback] = useState('');
+  const [checkoutLesson, setCheckoutLesson] = useState<Lesson>(lesson);
+  const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
+
+  const packageId = new URLSearchParams(window.location.search).get('packageId');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPackage() {
+      if (!packageId || !/^\d+$/.test(packageId)) {
+        setFeedback('No valid lesson package was selected.');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/lessons/${packageId}`);
+
+        if (!response.ok) {
+          throw new Error('Could not load this lesson package.');
+        }
+
+        const data = await response.json();
+        const item = data.package ?? data.lesson ?? data.data ?? data;
+
+        if (!cancelled) {
+          setCheckoutLesson({
+            ...lesson,
+            id: Number(item.id),
+            title: item.title,
+            teacher: item.teacher_name ?? lesson.teacher,
+            subject: item.subject ?? lesson.subject,
+            grade: item.teacher_specialization ?? lesson.grade,
+            videos: Number(item.video_count ?? 0),
+            price: Number(item.price),
+          });
+          setFeedback('');
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setFeedback(
+            error instanceof Error
+              ? error.message
+              : 'Could not load this lesson package.'
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadPackage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [packageId]);
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+
+    if (!accepted) {
+      setFeedback(
+        tx(lang, 'Accept the demo terms to continue.', 'وافق على الشروط التجريبية للمتابعة.')
+      );
+      return;
+    }
+
+    if (!packageId || !/^\d+$/.test(packageId)) {
+      setFeedback(
+        tx(lang, 'Please select a valid lesson package first.', 'يرجى اختيار باقة دروس صالحة أولاً.')
+      );
+      return;
+    }
+
+    setFeedback('');
+    setStep(2);
+  };
+
+  const confirmOrder = async () => {
+    if (orderState !== 'success') {
+      setFeedback(
+        orderState === 'pending'
+          ? tx(lang, 'Pending demo. No charge was made.', 'الطلب معلّق تجريبيًا. لم يتم تحصيل مبلغ.')
+          : tx(lang, 'Payment failed in the demo. No charge was made.', 'فشلت المحاكاة. لم يتم تحصيل مبلغ.')
+      );
+      return;
+    }
+
+    const token = localStorage.getItem('bayenly_token');
+
+    if (!token) {
+      setFeedback(
+        tx(lang, 'Please log in before purchasing.', 'يرجى تسجيل الدخول قبل الشراء.')
+      );
+      return;
+    }
+
+    if (!packageId || !/^\d+$/.test(packageId)) {
+      setFeedback(
+        tx(lang, 'Please select a valid lesson package first.', 'يرجى اختيار باقة دروس صالحة أولاً.')
+      );
+      return;
+    }
+
+    setProcessing(true);
+    setFeedback('');
+
+    try {
+      const purchaseResponse = await fetch(`${API_BASE}/purchases`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ package_id: Number(packageId) }),
+      });
+
+      const purchaseData = await purchaseResponse.json();
+
+      if (!purchaseResponse.ok) {
+        throw new Error(
+          purchaseData.message || purchaseData.error || 'Could not create the purchase.'
+        );
+      }
+
+      const purchaseId =
+        purchaseData.purchase?.id ??
+        purchaseData.id ??
+        purchaseData.purchase_id;
+
+      if (!purchaseId) {
+        throw new Error('Purchase created, but the server did not return its ID.');
+      }
+
+      const paymentResponse = await fetch(`${API_BASE}/payments/simulate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ purchase_id: purchaseId }),
+      });
+
+      const paymentData = await paymentResponse.json();
+
+      if (!paymentResponse.ok) {
+        throw new Error(
+          paymentData.message || paymentData.error || 'Simulated payment failed.'
+        );
+      }
+
+      navigate('/confirmation');
+    } catch (error) {
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : 'Something went wrong while processing the demo purchase.'
+      );
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  return (
+    <div className="checkout-page">
+      <button
+        className="inline-link"
+        onClick={() => navigate(`/lesson/${packageId ?? checkoutLesson.id}`)}
+      >
+        <ArrowLeft className={ar ? 'flip' : ''} />
+        {tx(lang, 'Back to lesson', 'العودة إلى الدرس')}
+      </button>
+
+      <div className="checkout-grid">
+        <section>
+          <span className="eyebrow muted-eyebrow">
+            {tx(lang, 'DEMO CHECKOUT', 'إتمام تجريبي')}
+          </span>
+
+          <h1>{tx(lang, 'Get the full lesson package', 'احصل على باقة الدروس')}</h1>
+
+          <p className="muted-copy">
+            {tx(
+              lang,
+              'This uses simulated payment only. No real money will be charged.',
+              'يستخدم هذا النظام محاكاة للدفع فقط. لن يتم تحصيل أي أموال حقيقية.'
+            )}
+          </p>
+
+          {loading ? (
+            <div className="panel">{tx(lang, 'Loading package...', 'جارٍ تحميل الباقة...')}</div>
+          ) : (
+            <>
+              {step === 1 ? (
+                <form onSubmit={submit}>
+                  <div className="panel payment-panel">
+                    <h2>{tx(lang, 'Choose a demo payment method', 'اختر وسيلة دفع تجريبية')}</h2>
+
+                    {[
+                      ['card', tx(lang, 'Bank card', 'بطاقة بنكية'), CreditCard],
+                      ['wallet', tx(lang, 'Mobile wallet', 'محفظة إلكترونية'), Wallet],
+                      ['meeza', 'Meeza', BadgeCheck],
+                    ].map(([id, label, Icon]) => {
+                      const I = Icon as typeof CreditCard;
+
+                      return (
+                        <button
+                          type="button"
+                          key={String(id)}
+                          className={`payment-method ${method === id ? 'selected' : ''}`}
+                          onClick={() => setMethod(String(id))}
+                        >
+                          <I size={18} />
+                          <span>
+                            {String(label)}
+                            <small>
+                              {tx(lang, 'Demo selection only; no payment details', 'اختيار تجريبي فقط؛ لا توجد بيانات دفع')}
+                            </small>
+                          </span>
+                          {method === id && <Check size={15} />}
+                        </button>
+                      );
+                    })}
+
+                    <div className="checkout-no-card">
+                      <LockKeyhole size={16} />
+                      {tx(lang, 'Never enter a card number or wallet PIN in this prototype.', 'لا تدخل رقم البطاقة أو الرقم السري للمحفظة في هذا النموذج.')}
+                    </div>
+
+                    <label className="check-label">
+                      <input
+                        type="checkbox"
+                        checked={accepted}
+                        onChange={(e) => setAccepted(e.target.checked)}
+                      />
+                      {tx(lang, 'I accept the demo order terms; no charge will be made.', 'أوافق على شروط الطلب التجريبي؛ لن يتم تحصيل أي مبلغ.')}
+                    </label>
+
+                    {feedback && <p className="inline-error">{feedback}</p>}
+
+                    <button className="button button-primary flow-submit" type="submit">
+                      {tx(lang, 'Review order', 'مراجعة الطلب')}
+                      <ArrowRight className={ar ? 'flip' : ''} />
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="panel confirmation-panel">
+                  <span className="confirmation-icon">
+                    <ShieldCheck size={26} />
+                  </span>
+
+                  <h2>{tx(lang, 'Confirm demo order', 'تأكيد الطلب التجريبي')}</h2>
+                  <p>
+                    {tx(lang, 'Choose a simulated payment result. No real payment provider is contacted.', 'اختر نتيجة دفع محاكاة. لن يتم التواصل مع مزود دفع حقيقي.')}
+                  </p>
+
+                  <label className="field">
+                    <span>{tx(lang, 'Demo result', 'النتيجة التجريبية')}</span>
+                    <select
+                      value={orderState}
+                      onChange={(e) =>
+                        setOrderState(e.target.value as 'success' | 'pending' | 'failed')
+                      }
+                    >
+                      <option value="success">{tx(lang, 'Successful demo', 'نجاح تجريبي')}</option>
+                      <option value="pending">{tx(lang, 'Pending demo', 'قيد الانتظار')}</option>
+                      <option value="failed">{tx(lang, 'Failed demo', 'فشل تجريبي')}</option>
+                    </select>
+                  </label>
+
+                  <div className="confirm-actions">
+                    <button
+                      className="button button-outline"
+                      onClick={() => {
+                        setFeedback('');
+                        setStep(1);
+                      }}
+                      disabled={processing}
+                    >
+                      {tx(lang, 'Back', 'رجوع')}
+                    </button>
+
+                    <button
+                      className="button button-primary"
+                      onClick={confirmOrder}
+                      disabled={processing}
+                    >
+                      {processing
+                        ? tx(lang, 'Processing...', 'جارٍ التنفيذ...')
+                        : tx(lang, 'Confirm demo purchase', 'تأكيد الشراء التجريبي')}
+                    </button>
+                  </div>
+
+                  {feedback && (
+                    <p role="status" className="inline-error">
+                      {feedback}
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </section>
+
+        <aside className="panel order-summary">
+          <span className="eyebrow muted-eyebrow">
+            {tx(lang, 'ORDER SUMMARY', 'ملخص الطلب')}
+          </span>
+
+          <div className="order-product">
+            <span className="order-art art-violet">◉</span>
+            <div>
+              <strong>{checkoutLesson.title}</strong>
+              <small>{checkoutLesson.teacher} · {checkoutLesson.subject}</small>
+              <small>
+                {checkoutLesson.videos} {T[lang].videos}
+              </small>
+            </div>
+          </div>
+
+          <div className="summary-line">
+            <span>{tx(lang, 'One-time package price', 'سعر الباقة لمرة واحدة')}</span>
+            <strong>EGP {checkoutLesson.price}</strong>
+          </div>
+
+          <div className="summary-total">
+            <span>{tx(lang, 'Total · EGP', 'الإجمالي · ج.م')}</span>
+            <strong>EGP {checkoutLesson.price}</strong>
+          </div>
+
+          <p>
+            {tx(lang, 'One purchase. Ongoing access. No recurring charges.', 'شراء مرة واحدة ووصول مستمر. بلا رسوم متكررة.')}
+          </p>
+        </aside>
+      </div>
+    </div>
+  );
+}
 
 function Confirmation({lang,lesson,orderRef,navigate}:{lang:AppLang;lesson:Lesson;orderRef:string;navigate:(p:string)=>void}){const ar=lang==='ar';return <div className="success-page"><span className="success-seal"><Check size={34}/></span><span className="eyebrow muted-eyebrow">{tx(lang,'DEMO ORDER CONFIRMED','تم تأكيد الطلب التجريبي')}</span><h1>{tx(lang,'Your lesson is ready to explore.','درسك جاهز للاستكشاف.')}</h1><p>{tx(lang,'Simulated order only. No money was charged and no real account access was unlocked.','طلب محاكى فقط. لم يتم تحصيل أموال أو فتح وصول حقيقي.')}</p><div className="panel confirmation-receipt"><div><span>{tx(lang,'Package','الباقة')}</span><strong>{lesson.title}</strong></div><div><span>{tx(lang,'Teacher','المدرس')}</span><strong>Omar Hassan</strong></div><div><span>{tx(lang,'Amount','المبلغ')}</span><strong>EGP {lesson.price}</strong></div><div><span>{tx(lang,'Demo reference','الرقم التجريبي')}</span><strong>{orderRef}</strong></div></div><div className="success-actions"><button className="button button-primary" onClick={()=>navigate('/learn/demo')}>{tx(lang,'Open sample learning page','افتح صفحة التعلّم التجريبية')}<ArrowRight className={ar?'flip':''}/></button><button className="button button-outline" onClick={()=>navigate('/student/learning')}>{tx(lang,'Go to My Learning','الذهاب إلى تعلّمي')}</button></div><p className="demo-disclaimer"><ShieldCheck size={14}/>{tx(lang,'The learning page is an access-control demo.','صفحة التعلم توضيحية للتحكم بالوصول.')}</p></div>}
 
@@ -99,7 +771,5 @@ function AdminWorkspace({route,lang,navigate}:{route:string;lang:AppLang;navigat
 function Moderation({title,records,lang,act}:{title:string;records:{name:string;meta:string}[];lang:AppLang;act:(i:number,decision:'reject'|'approve')=>void}){return <section className="queue-block">{title&&<h2>{title}</h2>}{records.length?records.map((r,i)=><div className="review-row" key={r.name}><div><strong>{r.name}</strong><small>{r.meta}</small></div><div><button className="button button-outline" onClick={()=>act(i,'reject')}>{tx(lang,'Reject / review','رفض / مراجعة')}</button><button className="button button-primary" onClick={()=>act(i,'approve')}>{tx(lang,'Approve / mark reviewed','اعتماد / تحديد كمراجع')}</button></div></div>):<p className="muted-copy">{tx(lang,'Queue clear in the demo.','قائمة المراجعة فارغة في النموذج.')}</p>}</section>}
 function Modal({title,message,cancel,confirm,onCancel,onConfirm}:{title:string;message:string;cancel:string;confirm:string;onCancel:()=>void;onConfirm:()=>void}){return <div className="modal-backdrop" role="presentation"><section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button className="modal-close" onClick={onCancel} aria-label="Close"><X size={17}/></button><span className="modal-mark"><ShieldCheck size={21}/></span><h2 id="modal-title">{title}</h2><p>{message}</p><div><button className="button button-outline" onClick={onCancel}>{cancel}</button><button className="button button-primary" onClick={onConfirm}>{confirm}</button></div></section></div>}
 function NotFound({lang,navigate}:{lang:AppLang;navigate:(p:string)=>void}){return <div className="flow-empty not-found"><span>404</span><h1>{tx(lang,'This page wandered off.','هذه الصفحة غير موجودة.')}</h1><p>{tx(lang,'The address may be incomplete or out of date.','قد يكون الرابط غير مكتمل أو قديمًا.')}</p><button className="button button-primary" onClick={()=>navigate('/')}>{tx(lang,'Go to marketplace','العودة إلى السوق')}</button></div>}
-
-
 
 

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import Dashboard from './Dashboard';
 import { ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, BadgeCheck, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, CircleHelp, Clock3, Download, FileText, Headphones, LayoutDashboard, Library, LockKeyhole, Menu, MoreHorizontal, Play, Plus, Search, Settings, ShieldCheck, ShoppingBag, Sparkles, Star, TrendingUp, Users, Video, Wallet, X } from 'lucide-react';
-import { lessons, videos, type Lesson } from './data';
 
+import { videos, type Lesson } from './data';
 
 const API_BASE = 'http://localhost:3000/api';
 
@@ -83,7 +83,7 @@ if (!Array.isArray(packages)) {
 }
 
 const mapped: Lesson[] = packages.map((item, index) => {
-        const visual = lessons[index % lessons.length];
+    const visual = videos[index % videos.length];
 
         return {
           id: item.id,
@@ -95,8 +95,8 @@ const mapped: Lesson[] = packages.map((item, index) => {
           duration: '—',
           price: Number(item.price),
           rating: '—',
-          color: visual.color,
-          art: visual.art,
+          color: '#EDE9FE',
+          art: '🎓',
           tag: 'Lesson package',
         };
       });
@@ -183,7 +183,12 @@ const mapped: Lesson[] = packages.map((item, index) => {
         <section className="how-section"><div className="how-intro"><div className="eyebrow"><span className="eyebrow-dot lime-dot"/>{ar?'تعلم من غير تعقيد':'SIMPLE BY DESIGN'}</div><h2>{t.how}</h2><p>{t.howText}</p><button className="button button-lime" onClick={()=>document.getElementById('lessons')?.scrollIntoView({behavior:'smooth'})}>{ar?'استكشف الدروس':'Explore lessons'}<ArrowRight className={ar?'flip':''} size={16}/></button><div className="how-deco">✳</div></div><div className="step-list">{t.steps.map((step,i)=><div className="step-item" key={step}><span className={`step-number ${i===1?'step-coral':''}`}>0{i+1}</span><div><h3>{step}</h3><p>{t.stepsText[i]}</p></div><ArrowDownLeft className="step-arrow" size={18}/></div>)}</div></section>
         <section className="teacher-banner"><div className="teacher-doodle">✳</div><div className="teacher-content"><div className="eyebrow"><span className="eyebrow-dot coral-dot"/>{ar?'للمدرسين':'FOR TEACHERS'}</div><h2>{t.teacherCta}</h2><p>{t.teacherSub}</p><button className="button button-dark" onClick={()=>go('dashboard')}>{t.startTeaching}<ArrowUpRight size={16}/></button></div><div className="teacher-stats"><div><strong>EGP</strong><span>{ar?'دخل مقابل خبرتك':'Your knowledge, valued'}</span></div><div className="stats-line"/><div><strong>∞</strong><span>{ar?'دروسك تفضل متاحة':'Lessons that last'}</span></div></div></section>
       </main> : <LessonDetails
-  lang={lang} lessonId={selectedLessonId} onBack={() => go('home')} notify={notify} onBuy={() => onNavigate?.('/checkout')}/>}
+  lang={lang}
+  lessonId={selectedLessonId}
+  onBack={() => go('home')}
+  notify={notify}
+  onBuy={(id) => onNavigate?.(`/checkout?packageId=${id}`)}
+/>}
       <Footer lang={lang} onTeacher={()=>go('dashboard')} notify={notify}/>
     </>}
     {toast&&<div className="toast" role="status"><span className="toast-check"><Check size={15}/></span>{toast}<button onClick={()=>setToast('')} aria-label="Close"><X size={15}/></button></div>}
@@ -213,7 +218,7 @@ function formatDuration(seconds?: number | null) {
 }
 
 function LessonDetails({ lang, lessonId, onBack, notify, onBuy }: {
-  lang: Lang; lessonId: number | null; onBack: () => void; notify: (s: string) => void; onBuy: () => void;
+  lang: Lang; lessonId: number | null; onBack: () => void; notify: (s: string) => void; onBuy: (id: number) => void;
 }) {
   const ar = lang === 'ar';
   const [detail, setDetail] = useState<ApiLessonDetail | null>(null);
@@ -243,7 +248,14 @@ function LessonDetails({ lang, lessonId, onBack, notify, onBuy }: {
         if (!item || typeof item !== 'object' || !item.id) {
           throw new Error(ar ? 'استجابة غير متوقعة من الخادم.' : 'Unexpected lesson API response.');
         }
-        setDetail({ ...item, videos: Array.isArray(item.videos) ? item.videos : [] });
+        setDetail({
+          ...item,
+          videos: Array.isArray(data.videos)
+            ? data.videos
+            : Array.isArray(item.videos)
+              ? item.videos
+              : [],
+        });
       } catch (err) {
         if (err instanceof Error && err.name !== 'AbortError') setError(err.message);
       } finally {
@@ -330,7 +342,13 @@ function LessonDetails({ lang, lessonId, onBack, notify, onBuy }: {
             <div className="eyebrow muted-eyebrow">{ar ? 'باقة تعليمية' : 'LESSON PACKAGE'}</div>
             <div className="purchase-price">EGP {price.toLocaleString('en-EG')}<small>{ar ? 'دفعة واحدة' : 'one-time payment'}</small></div>
             <p>{ar ? 'اشترِ الباقة للوصول إلى محتواها.' : 'Purchase this package to access its content.'}</p>
-            <button className="button button-primary buy-button" onClick={onBuy}>{ar ? 'شراء الباقة' : 'Buy Lesson Package'}<ArrowRight className={ar ? 'flip' : ''} size={17}/></button>
+            <button
+  className="button button-primary buy-button"
+  onClick={() => onBuy(detail.id)}
+>
+  {ar ? 'شراء الباقة' : 'Buy Lesson Package'}
+  <ArrowRight className={ar ? 'flip' : ''} size={17} />
+</button>
             <div className="access-note"><ShieldCheck size={18}/><span><strong>{ar ? 'وصول بعد تأكيد الدفع' : 'Access after payment'}</strong><small>{ar ? 'سيتم فتح المحتوى بعد تأكيد عملية الشراء.' : 'Package content unlocks after the purchase is confirmed.'}</small></span></div>
           </div>
           <div className="package-includes">

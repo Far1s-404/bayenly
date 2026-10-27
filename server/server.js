@@ -39,6 +39,19 @@ app.get("/api/health", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-    console.log(`Bayenly API running at http://localhost:${PORT}`);
-});
+async function startServer() {
+    try {
+        await pool.query(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT"
+        );
+
+        app.listen(PORT, () => {
+            console.log(`Bayenly API running at http://localhost:${PORT}`);
+        });
+    } catch (error) {
+        console.error("Database schema initialization failed:", error.message);
+        process.exitCode = 1;
+    }
+}
+
+startServer();
