@@ -1,4 +1,4 @@
-export const API_BASE = (import.meta as ImportMeta & { env: { VITE_API_BASE?: string } }).env.VITE_API_BASE || 'http://localhost:3000/api';
+export const API_BASE = (import.meta as ImportMeta & { env: { VITE_API_BASE?: string } }).env.VITE_API_BASE || '/api';
 
 export type AuthUser = {
   id: number | string;

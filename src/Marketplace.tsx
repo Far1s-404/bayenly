@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import Dashboard from './Dashboard';
+import { API_BASE } from './api';
 import { ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, BadgeCheck, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, CircleHelp, Clock3, Download, FileText, Headphones, LayoutDashboard, Library, LockKeyhole, Menu, MoreHorizontal, Play, Plus, Search, Settings, ShieldCheck, ShoppingBag, Sparkles, Star, TrendingUp, Users, Video, Wallet, X } from 'lucide-react';
 
 import { videos, type Lesson } from './data';
-
-const API_BASE = 'http://localhost:3000/api';
 
 type ApiLesson = {
   id: number;

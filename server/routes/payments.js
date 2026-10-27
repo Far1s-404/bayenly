@@ -15,6 +15,15 @@ router.post(
     authenticateToken,
     requireRole("student"),
     async (req, res) => {
+        if (
+            process.env.NODE_ENV === "production" ||
+            process.env.PAYMENTS_SIMULATION_ENABLED !== "true"
+        ) {
+            return res.status(503).json({
+                message: "Payments are not configured. No payment was taken.",
+            });
+        }
+
         const client = await pool.connect();
 
         try {

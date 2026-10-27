@@ -3,8 +3,7 @@ import { ArrowLeft, ArrowRight, ArrowUpRight, BadgeCheck, BookOpen, Check, Chevr
 import type { AppLang } from './App';
 import type { Lesson } from './data';
 import { studentPurchases, teacherPackages, mediaLibrary, adminQueue } from './mockRepository';
-
-const API_BASE = 'http://localhost:3000/api';
+import { API_BASE } from './api';
 
 type VideoDraft = { title: string; description: string; duration: string };
 export type PackageDraft = { title: string; description: string; subject: string; grade: string; language: string; objectives: string; price: number; videos: VideoDraft[]; resources: string[]; thumbnail?: string };
@@ -402,8 +401,6 @@ function Checkout({
   setOrderState: (s: 'success' | 'pending' | 'failed') => void;
 }) {
   const ar = lang === 'ar';
-  const API_BASE = 'http://localhost:3000/api';
-
   const [method, setMethod] = useState('card');
   const [accepted, setAccepted] = useState(false);
   const [step, setStep] = useState(1);
@@ -466,6 +463,36 @@ function Checkout({
       cancelled = true;
     };
   }, [packageId]);
+
+  if (import.meta.env.PROD) {
+    return (
+      <div className="checkout-page">
+        <button
+          className="inline-link"
+          onClick={() => navigate(`/lesson/${packageId ?? checkoutLesson.id}`)}
+        >
+          <ArrowLeft className={ar ? 'flip' : ''} />
+          {tx(lang, 'Back to lesson', 'العودة إلى الدرس')}
+        </button>
+        <div className="panel">
+          <span className="eyebrow muted-eyebrow">
+            {tx(lang, 'PAYMENTS NOT CONFIGURED', 'الدفع غير مهيأ')}
+          </span>
+          <h1>{tx(lang, 'Checkout is unavailable', 'إتمام الشراء غير متاح')}</h1>
+          <p>
+            {tx(
+              lang,
+              'No payment provider is configured, so no order or charge was created. Please try again later.',
+              'لم يتم إعداد مزود للدفع، لذلك لم يتم إنشاء طلب أو تحصيل أي مبلغ. يرجى المحاولة لاحقًا.'
+            )}
+          </p>
+          <button className="button button-outline" onClick={() => navigate('/')}>
+            {tx(lang, 'Browse lessons', 'تصفح الدروس')}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -771,5 +798,4 @@ function AdminWorkspace({route,lang,navigate}:{route:string;lang:AppLang;navigat
 function Moderation({title,records,lang,act}:{title:string;records:{name:string;meta:string}[];lang:AppLang;act:(i:number,decision:'reject'|'approve')=>void}){return <section className="queue-block">{title&&<h2>{title}</h2>}{records.length?records.map((r,i)=><div className="review-row" key={r.name}><div><strong>{r.name}</strong><small>{r.meta}</small></div><div><button className="button button-outline" onClick={()=>act(i,'reject')}>{tx(lang,'Reject / review','رفض / مراجعة')}</button><button className="button button-primary" onClick={()=>act(i,'approve')}>{tx(lang,'Approve / mark reviewed','اعتماد / تحديد كمراجع')}</button></div></div>):<p className="muted-copy">{tx(lang,'Queue clear in the demo.','قائمة المراجعة فارغة في النموذج.')}</p>}</section>}
 function Modal({title,message,cancel,confirm,onCancel,onConfirm}:{title:string;message:string;cancel:string;confirm:string;onCancel:()=>void;onConfirm:()=>void}){return <div className="modal-backdrop" role="presentation"><section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button className="modal-close" onClick={onCancel} aria-label="Close"><X size={17}/></button><span className="modal-mark"><ShieldCheck size={21}/></span><h2 id="modal-title">{title}</h2><p>{message}</p><div><button className="button button-outline" onClick={onCancel}>{cancel}</button><button className="button button-primary" onClick={onConfirm}>{confirm}</button></div></section></div>}
 function NotFound({lang,navigate}:{lang:AppLang;navigate:(p:string)=>void}){return <div className="flow-empty not-found"><span>404</span><h1>{tx(lang,'This page wandered off.','هذه الصفحة غير موجودة.')}</h1><p>{tx(lang,'The address may be incomplete or out of date.','قد يكون الرابط غير مكتمل أو قديمًا.')}</p><button className="button button-primary" onClick={()=>navigate('/')}>{tx(lang,'Go to marketplace','العودة إلى السوق')}</button></div>}
-
 
