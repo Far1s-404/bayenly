@@ -66,12 +66,23 @@ useEffect(() => {
         throw new Error('Could not load lessons.');
       }
 
-      const data: { lessons: ApiLesson[] } | ApiLesson[] =
-        await response.json();
+      const data = await response.json();
 
-      const packages = Array.isArray(data) ? data : data.lessons;
+const packages: ApiLesson[] = Array.isArray(data)
+  ? data
+  : Array.isArray(data.lessons)
+    ? data.lessons
+    : Array.isArray(data.packages)
+      ? data.packages
+      : Array.isArray(data.data)
+        ? data.data
+        : [];
 
-      const mapped: Lesson[] = packages.map((item, index) => {
+if (!Array.isArray(packages)) {
+  throw new Error('Unexpected lessons API response.');
+}
+
+const mapped: Lesson[] = packages.map((item, index) => {
         const visual = lessons[index % lessons.length];
 
         return {
@@ -114,8 +125,14 @@ useEffect(() => {
     const c = subjectMap[selected] || selected; return matchesQuery && (category === 0 || l.subject === c || (c === 'Science' && ['Biology','Physics'].includes(l.subject)));
   }), [apiLessons,query,category,t]);
   const notify = (msg: string) => { setToast(msg); window.setTimeout(()=>setToast(''), 3200); };
+  const [selectedLessonId, setSelectedLessonId] = useState<number | null>(null);
   const go = (target: Screen) => { setScreen(target); setMobileNav(false); onNavigate?.(target === 'lesson' ? '/lesson/newton' : target === 'dashboard' ? '/teacher/overview' : '/'); window.scrollTo({top:0,behavior:'smooth'}); };
-
+  const openLesson = (id: number) => {
+  setSelectedLessonId(id);
+  setScreen('lesson');
+  onNavigate?.(`/lesson/${id}`);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
   return <div className={`app ${ar?'rtl':'ltr'}`} dir={ar?'rtl':'ltr'}>
     {screen === 'dashboard' ? <Dashboard lang={lang} setLang={setLang} ar={ar} active={activeSection} setActive={setActiveSection} onHome={()=>go('home')} onCreate={()=>notify(ar?'إنشاء الباقات متاح قريبًا في النموذج التجريبي.':'Package creation is coming soon in this demo.')} /> : <>
       <header className="topbar"><div className="topbar-inner"><button className="brand" onClick={()=>go('home')} aria-label="Bayyenly home"><span className="brand-mark">ب</span><span>bayyenly<span className="brand-dot">.</span></span></button>
@@ -141,7 +158,7 @@ useEffect(() => {
         ) : filtered.length ? (
           <div className="lesson-grid">
             {filtered.slice(0, 4).map(item => (
-              <LessonCard key={item.id} lesson={item} lang={lang} onClick={() => go('lesson')} />
+              <LessonCard key={item.id} lesson={item} lang={lang} onClick={() => openLesson(item.id)} />
             ))}
           </div>
         ) : (
@@ -156,7 +173,8 @@ useEffect(() => {
         )}</section>
         <section className="how-section"><div className="how-intro"><div className="eyebrow"><span className="eyebrow-dot lime-dot"/>{ar?'تعلم من غير تعقيد':'SIMPLE BY DESIGN'}</div><h2>{t.how}</h2><p>{t.howText}</p><button className="button button-lime" onClick={()=>document.getElementById('lessons')?.scrollIntoView({behavior:'smooth'})}>{ar?'استكشف الدروس':'Explore lessons'}<ArrowRight className={ar?'flip':''} size={16}/></button><div className="how-deco">✳</div></div><div className="step-list">{t.steps.map((step,i)=><div className="step-item" key={step}><span className={`step-number ${i===1?'step-coral':''}`}>0{i+1}</span><div><h3>{step}</h3><p>{t.stepsText[i]}</p></div><ArrowDownLeft className="step-arrow" size={18}/></div>)}</div></section>
         <section className="teacher-banner"><div className="teacher-doodle">✳</div><div className="teacher-content"><div className="eyebrow"><span className="eyebrow-dot coral-dot"/>{ar?'للمدرسين':'FOR TEACHERS'}</div><h2>{t.teacherCta}</h2><p>{t.teacherSub}</p><button className="button button-dark" onClick={()=>go('dashboard')}>{t.startTeaching}<ArrowUpRight size={16}/></button></div><div className="teacher-stats"><div><strong>EGP</strong><span>{ar?'دخل مقابل خبرتك':'Your knowledge, valued'}</span></div><div className="stats-line"/><div><strong>∞</strong><span>{ar?'دروسك تفضل متاحة':'Lessons that last'}</span></div></div></section>
-      </main> : <LessonDetails lang={lang} onBack={()=>go('home')} notify={notify} onBuy={()=>onNavigate?.('/checkout')} />}
+      </main> : <LessonDetails
+  lang={lang} lessonId={selectedLessonId} onBack={() => go('home')} notify={notify} onBuy={() => onNavigate?.('/checkout')}/>}
       <Footer lang={lang} onTeacher={()=>go('dashboard')} notify={notify}/>
     </>}
     {toast&&<div className="toast" role="status"><span className="toast-check"><Check size={15}/></span>{toast}<button onClick={()=>setToast('')} aria-label="Close"><X size={15}/></button></div>}
@@ -167,13 +185,158 @@ function LanguageSwitch({lang,setLang}:{lang:Lang;setLang:(l:Lang)=>void}) { ret
 function LessonCard({lesson,lang,onClick}:{lesson:Lesson;lang:Lang;onClick:()=>void}) { return <article className="lesson-card"><button className={`lesson-art art-${lesson.color}`} onClick={onClick} aria-label={`${lang==='ar'?'عرض':'View'} ${lesson.title}`}><span className="art-badge"><Sparkles size={12}/>{lesson.tag}</span><span className="art-symbol">{lesson.art}</span><span className="art-corner"><ArrowUpRight size={17}/></span><span className="art-stripe"/></button><div className="lesson-card-body"><div className="lesson-meta"><span>{lesson.subject}</span><span className="dot-sep"/>{lesson.grade}</div><button className="lesson-title" onClick={onClick}>{lesson.title}</button><div className="teacher-line"><span className="teacher-avatar">{lesson.teacher.split(' ').map(n=>n[0]).slice(0,2).join('')}</span><span>{lesson.teacher}</span><span className="rating"><Star size={12} fill="currentColor"/>{lesson.rating}</span></div><div className="card-divider"/><div className="lesson-bottom"><span><Video size={14}/>{lesson.videos} {copy[lang].videos}<i/> <Clock3 size={14}/>{lesson.duration}</span><strong>EGP {lesson.price}</strong></div></div></article>; }
 function Footer({lang,onTeacher,notify}:{lang:Lang;onTeacher:()=>void;notify:(message:string)=>void}) { const ar=lang==='ar';return <footer className="footer"><div className="footer-main"><div className="footer-brand"><span className="brand"><span className="brand-mark">ب</span><span>bayyenly<span className="brand-dot">.</span></span></span><p>{copy[lang].footer}</p></div><div className="footer-links"><div><strong>{ar?'اكتشف':'Discover'}</strong><a href="#lessons">{copy[lang].explore}</a><a href="#lessons">{ar?'المواد الدراسية':'Subjects'}</a></div><div><strong>{ar?'للمدرسين':'For teachers'}</strong><button onClick={onTeacher}>{copy[lang].teacher}</button><button onClick={onTeacher}>{ar?'لوحة التحكم':'Teacher workspace'}</button></div><div><strong>{ar?'مساعدة':'Help'}</strong><button onClick={()=>notify(ar?'تفاصيل التواصل ستتوفر قريبًا.':'Contact details will be available soon.')}>{ar?'تواصل معنا':'Contact us'}</button><button onClick={()=>notify(ar?'الأسئلة الشائعة ستتوفر قريبًا.':'FAQs will be available soon.')}>{ar?'الأسئلة الشائعة':'FAQs'}</button></div></div></div><div className="footer-bottom"><span>© 2025 Bayyenly. {ar?'جميع الحقوق محفوظة':'All rights reserved'}.</span><span>{ar?'مصنوع بحب في مصر':'Made with care in Egypt'} <span className="egypt-mark">✳</span></span></div></footer>; }
 
-function LessonDetails({lang,onBack,notify,onBuy}:{lang:Lang;onBack:()=>void;notify:(s:string)=>void;onBuy:()=>void}) { const ar=lang==='ar'; const featured=lessons[0]; return <main className="details-page"><div className="breadcrumbs"><button onClick={onBack}>{ar?'الرئيسية':'Home'}</button><ChevronRight size={14}/><button onClick={onBack}>{ar?'الدروس':'Lessons'}</button><ChevronRight size={14}/><span>{featured.title}</span></div><div className="details-layout"><div className="details-main"><div className="detail-topline"><span className="pill-subject">{ar?'فيزياء':'Physics'}</span><span className="pill-grade">{ar?'الصف الأول الثانوي':'Grade 10'}</span><span className="detail-share"><button onClick={()=>notify(ar?'تم حفظ الدرس في قائمتك.':'Lesson saved to your list.')} aria-label="Save lesson"><Bookmark size={17}/></button><button onClick={()=>notify(ar?'الرابط جاهز للمشاركة.':'Share link copied in this demo.')} aria-label="Share lesson"><ArrowUpRight size={17}/></button></span></div><h1 className="details-title">Newton’s Laws<br className="desktop-break"/> of Motion</h1><p className="details-description">A clear, visual walkthrough of the three laws that explain how everything moves. Build real understanding, then put it to work with guided examples and exam-style questions.</p><div className="teacher-profile"><span className="profile-avatar">OH</span><div><strong>Omar Hassan <BadgeCheck className="verified" size={16}/></strong><span>{ar?'مدرس فيزياء':'Physics teacher'} <i/> 8 {ar?'سنوات خبرة':'years teaching'}</span></div><div className="profile-rating"><Star size={14} fill="currentColor"/><strong>4.9</strong><span>(126 {ar?'تقييم':'reviews'})</span></div></div><button className="video-preview" onClick={()=>notify(ar?'هذا معاينة تجريبية للفيديو.':'This is a demo video preview.')}><div className="video-art"><div className="video-orbit one"/><div className="video-orbit two"/><span className="video-atom">⊙</span><span className="video-equation">F = m × a</span><span className="video-caption">NEWTON’S<br/>SECOND LAW</span></div><span className="play-button"><Play fill="currentColor" size={21}/></span><span className="preview-label">{ar?'معاينة الدرس':'PREVIEW LESSON'}</span><span className="preview-duration">02:14</span></button><div className="content-section"><div className="content-heading"><div><h2>{ar?'ماذا ستتعلم':'What you’ll learn'}</h2><p>{ar?'شرح كامل للقوانين مع تطبيق عملي':'A complete toolkit for understanding force and motion.'}</p></div><span className="content-summary">8 {ar?'فيديوهات':'videos'} <i/> 2h 40m</span></div><div className="video-list">{videos.map((v,i)=><div className={`video-row ${v.preview?'preview-row':''}`} key={v.title}><span className="video-index">{v.preview?<Play size={13}/>:String(i+1).padStart(2,'0')}</span><span className="video-name">{v.title}{v.preview&&<small>{ar?'متاح للمعاينة':'Free preview'}</small>}</span><span className="video-time">{v.duration}</span><LockKeyhole size={14} className={v.preview?'unlocked':''}/></div>)}</div></div><div className="resources-section"><h2>{ar?'موارد إضافية':'Learning resources'}</h2><div className="resource-row"><span className="resource-icon"><FileText size={19}/></span><span><strong>Newton’s Laws — Quick Notes</strong><small>PDF · 4 pages</small></span><Download size={17} className="resource-download"/></div><div className="resource-row"><span className="resource-icon coral-resource"><FileText size={19}/></span><span><strong>Practice Questions + Answers</strong><small>PDF · 12 questions</small></span><Download size={17} className="resource-download"/></div></div><div className="objectives"><h2>{ar?'ما ستتمكن من فعله':'By the end, you can…'}</h2><p><Check size={16}/>Explain inertia and predict motion using Newton’s first law</p><p><Check size={16}/>Apply F = ma to calculate forces in real situations</p><p><Check size={16}/>Draw free body diagrams and solve exam questions</p></div><div className="same-teacher"><div className="section-heading"><div><h2>{ar?'دروس أخرى من عمر':'More from Omar'}</h2><p>{ar?'واصل التعلّم مع عمر':'Keep learning with this teacher.'}</p></div><button className="link-button" onClick={onBack}>{ar?'عرض الكل':'View all'}<ArrowRight size={15}/></button></div><div className="teacher-more-cards">{lessons.slice(4,6).map(l=><LessonCard key={l.id} lesson={l} lang={lang} onClick={()=>notify(ar?'تفاصيل الدرس ستظهر هنا.':'Lesson detail view is shown above.')}/>)}</div></div></div><aside className="purchase-column"><div className="purchase-card"><div className="purchase-card-top"><div className="eyebrow muted-eyebrow">{ar?'باقة تعليمية':'LESSON PACKAGE'}</div><div className="purchase-price">EGP 180 <small>{ar?'دفعة واحدة':'one-time payment'}</small></div><p>{ar?'وصول دائم لكل دروس الباقة':'Unlock the full package. Keep it for good.'}</p><button className="button button-primary buy-button" onClick={onBuy}>{ar?'شراء الباقة':'Buy Lesson Package'}<ArrowRight className={ar?'flip':''} size={17}/></button><div className="access-note"><ShieldCheck size={18}/><span><strong>{ar?'وصول دائم':'Ongoing access'}</strong><small>{ar?'ادفع مرة واحدة وافتح كل الدروس. شاهدها في أي وقت.':'One purchase unlocks every lesson. Revisit anytime.'}</small></span></div></div><div className="package-includes"><h3>{ar?'ماذا تتضمن الباقة':'This package includes'}</h3><p><Video size={16}/><span>8 video lessons</span><strong>2h 40m</strong></p><p><FileText size={16}/><span>2 downloadable PDFs</span></p><p><Headphones size={16}/><span>Lifetime access</span></p><p><LockKeyhole size={16}/><span>Watch on any device</span></p></div><div className="purchase-teacher"><span className="profile-avatar">OH</span><div><small>{ar?'مدرس الباقة':'YOUR TEACHER'}</small><strong>Omar Hassan</strong><span><Star size={11} fill="currentColor"/> 4.9 · 126 reviews</span></div><ChevronRight size={17}/></div></div><div className="safe-note"><ShieldCheck size={15}/>{ar?'دفع آمن عند تفعيل الدفع':'Secure checkout when payments go live'}</div></aside></div></main>; }
+type ApiLessonDetail = {
+  id: number;
+  title: string;
+  description?: string | null;
+  subject: string;
+  price: string | number;
+  teacher_name?: string | null;
+  teacher_specialization?: string | null;
+  videos?: Array<{ id: number; title: string; duration_seconds?: number | null; position?: number }>;
+};
 
+function formatDuration(seconds?: number | null) {
+  if (!seconds || seconds <= 0) return '—';
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  return hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
+}
 
+function LessonDetails({ lang, lessonId, onBack, notify, onBuy }: {
+  lang: Lang; lessonId: number | null; onBack: () => void; notify: (s: string) => void; onBuy: () => void;
+}) {
+  const ar = lang === 'ar';
+  const [detail, setDetail] = useState<ApiLessonDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
+  useEffect(() => {
+    if (!lessonId) {
+      setDetail(null);
+      setError(ar ? 'اختار درسًا من القائمة أولًا.' : 'Choose a lesson from the marketplace first.');
+      setLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    async function fetchLesson() {
+      try {
+        setLoading(true);
+        setError('');
+        const response = await fetch(`${API_BASE}/lessons/${lessonId}`, { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error(response.status === 404
+            ? (ar ? 'الدرس غير موجود أو لم يتم نشره.' : 'This lesson was not found or is not published.')
+            : (ar ? 'تعذر تحميل تفاصيل الدرس.' : 'Could not load lesson details.'));
+        }
+        const data = await response.json();
+        const item = data?.lesson ?? data?.package ?? data?.data ?? data;
+        if (!item || typeof item !== 'object' || !item.id) {
+          throw new Error(ar ? 'استجابة غير متوقعة من الخادم.' : 'Unexpected lesson API response.');
+        }
+        setDetail({ ...item, videos: Array.isArray(item.videos) ? item.videos : [] });
+      } catch (err) {
+        if (err instanceof Error && err.name !== 'AbortError') setError(err.message);
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+    fetchLesson();
+    return () => controller.abort();
+  }, [lessonId, ar]);
 
+  const packageVideos = detail?.videos ?? [];
+  const totalDuration = packageVideos.reduce((sum, video) => sum + (Number(video.duration_seconds) || 0), 0);
+  const teacherName = detail?.teacher_name || (ar ? 'المدرس' : 'Teacher');
+  const initials = teacherName.split(' ').filter(Boolean).slice(0, 2).map(part => part[0]).join('');
+  const price = Number(detail?.price ?? 0);
 
+  if (loading) return <main className="details-page"><p role="status">{ar ? 'جارٍ تحميل تفاصيل الدرس...' : 'Loading lesson details...'}</p></main>;
 
+  if (error || !detail) {
+    return <main className="details-page">
+      <button className="link-button" onClick={onBack}><ArrowLeft size={16}/>{ar ? 'العودة للدروس' : 'Back to lessons'}</button>
+      <div className="empty-state">
+        <strong>{ar ? 'تعذر فتح الدرس' : 'Could not open this lesson'}</strong>
+        <span>{error || (ar ? 'الدرس غير متاح.' : 'This lesson is unavailable.')}</span>
+        <button className="button button-outline" onClick={onBack}>{ar ? 'تصفح الدروس' : 'Browse lessons'}</button>
+      </div>
+    </main>;
+  }
 
-
-
+  return <main className="details-page">
+    <div className="breadcrumbs">
+      <button onClick={onBack}>{ar ? 'الرئيسية' : 'Home'}</button><ChevronRight size={14}/>
+      <button onClick={onBack}>{ar ? 'الدروس' : 'Lessons'}</button><ChevronRight size={14}/><span>{detail.title}</span>
+    </div>
+    <div className="details-layout">
+      <div className="details-main">
+        <div className="detail-topline">
+          <span className="pill-subject">{detail.subject}</span>
+          {detail.teacher_specialization && <span className="pill-grade">{detail.teacher_specialization}</span>}
+          <span className="detail-share">
+            <button onClick={() => notify(ar ? 'تم حفظ الدرس في قائمتك.' : 'Lesson saved to your list.')} aria-label="Save lesson"><Bookmark size={17}/></button>
+            <button onClick={() => {
+              if (navigator.clipboard?.writeText) {
+                navigator.clipboard.writeText(window.location.href)
+                  .then(() => notify(ar ? 'تم نسخ رابط الدرس.' : 'Lesson link copied.'))
+                  .catch(() => notify(ar ? 'تعذر نسخ الرابط.' : 'Could not copy the link.'));
+              } else notify(ar ? 'انسخ الرابط من شريط العنوان.' : 'Copy the link from your address bar.');
+            }} aria-label="Share lesson"><ArrowUpRight size={17}/></button>
+          </span>
+        </div>
+        <h1 className="details-title">{detail.title}</h1>
+        <p className="details-description">{detail.description || (ar ? 'باقة تعليمية من المدرس. راجع تفاصيل الفيديوهات أدناه.' : 'A lesson package from your teacher. Review the included videos below.')}</p>
+        <div className="teacher-profile">
+          <span className="profile-avatar">{initials || 'T'}</span>
+          <div><strong>{teacherName} <BadgeCheck className="verified" size={16}/></strong><span>{detail.teacher_specialization || (ar ? 'مدرس' : 'Teacher')}</span></div>
+        </div>
+        <div className="video-preview">
+          <div className="video-art"><div className="video-orbit one"/><div className="video-orbit two"/><span className="video-atom">⊙</span><span className="video-equation">{detail.subject}</span><span className="video-caption">{ar ? 'باقة تعليمية' : 'LESSON PACKAGE'}</span></div>
+          <span className="preview-label">{ar ? 'محتويات الباقة' : 'PACKAGE CONTENTS'}</span>
+        </div>
+        <div className="content-section">
+          <div className="content-heading">
+            <div><h2>{ar ? 'فيديوهات الباقة' : 'Package videos'}</h2><p>{ar ? 'الفيديوهات المتاحة ضمن هذه الباقة.' : 'Videos included in this lesson package.'}</p></div>
+            <span className="content-summary">{packageVideos.length} {ar ? 'فيديوهات' : 'videos'}{totalDuration > 0 && <> <i/> {formatDuration(totalDuration)}</>}</span>
+          </div>
+          {packageVideos.length ? <div className="video-list">{packageVideos.slice().sort((a,b) => (a.position ?? 0) - (b.position ?? 0)).map((video,index) =>
+            <div className="video-row" key={video.id}>
+              <span className="video-index">{String(index + 1).padStart(2,'0')}</span>
+              <span className="video-name">{video.title}</span>
+              <span className="video-time">{formatDuration(video.duration_seconds)}</span><LockKeyhole size={14}/>
+            </div>)}</div>
+          : <div className="empty-state"><span>{ar ? 'لم يضف المدرس فيديوهات لهذه الباقة بعد.' : 'The teacher has not added videos to this package yet.'}</span></div>}
+        </div>
+        <div className="objectives">
+          <h2>{ar ? 'معلومات الباقة' : 'Package information'}</h2>
+          <p><Check size={16}/>{ar ? 'ادفع مرة واحدة للوصول إلى الباقة.' : 'Pay once to purchase this package.'}</p>
+          <p><Check size={16}/>{ar ? 'ستظهر الفيديوهات بعد تأكيد الشراء.' : 'Videos become available after the purchase is confirmed.'}</p>
+          <p><Check size={16}/>{ar ? 'تفاصيل الباقة محمّلة من الخادم.' : 'Package details are loaded from the API.'}</p>
+        </div>
+      </div>
+      <aside className="purchase-column">
+        <div className="purchase-card">
+          <div className="purchase-card-top">
+            <div className="eyebrow muted-eyebrow">{ar ? 'باقة تعليمية' : 'LESSON PACKAGE'}</div>
+            <div className="purchase-price">EGP {price.toLocaleString('en-EG')}<small>{ar ? 'دفعة واحدة' : 'one-time payment'}</small></div>
+            <p>{ar ? 'اشترِ الباقة للوصول إلى محتواها.' : 'Purchase this package to access its content.'}</p>
+            <button className="button button-primary buy-button" onClick={onBuy}>{ar ? 'شراء الباقة' : 'Buy Lesson Package'}<ArrowRight className={ar ? 'flip' : ''} size={17}/></button>
+            <div className="access-note"><ShieldCheck size={18}/><span><strong>{ar ? 'وصول بعد تأكيد الدفع' : 'Access after payment'}</strong><small>{ar ? 'سيتم فتح المحتوى بعد تأكيد عملية الشراء.' : 'Package content unlocks after the purchase is confirmed.'}</small></span></div>
+          </div>
+          <div className="package-includes">
+            <h3>{ar ? 'ماذا تتضمن الباقة' : 'This package includes'}</h3>
+            <p><Video size={16}/><span>{packageVideos.length} {ar ? 'فيديوهات' : 'videos'}</span></p>
+            {totalDuration > 0 && <p><Clock3 size={16}/><span>{formatDuration(totalDuration)}</span></p>}
+            <p><Headphones size={16}/><span>{ar ? 'تعلم حسب وقتك' : 'Learn at your own pace'}</span></p>
+            <p><LockKeyhole size={16}/><span>{ar ? 'محتوى محمي للمشترين' : 'Content protected for buyers'}</span></p>
+          </div>
+          <div className="purchase-teacher">
+            <span className="profile-avatar">{initials || 'T'}</span><div><small>{ar ? 'مدرس الباقة' : 'YOUR TEACHER'}</small><strong>{teacherName}</strong>{detail.teacher_specialization && <span>{detail.teacher_specialization}</span>}</div><ChevronRight size={17}/>
+          </div>
+        </div>
+        <div className="safe-note"><ShieldCheck size={15}/>{ar ? 'الدفع الآمن سيتوفر عند تفعيل بوابة الدفع.' : 'Secure payments will be available when a payment provider is integrated.'}</div>
+      </aside>
+    </div>
+  </main>;
+}
