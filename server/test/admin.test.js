@@ -92,6 +92,18 @@ test("admin can suspend and restore a non-admin account with an audit record", a
     pool.connect = async () => ({
         async query(text, values) {
             statements.push({ text, values });
+            if (text.includes("FROM users") && text.includes("FOR UPDATE")) {
+                return {
+                    rows: [{
+                        id: "42",
+                        name: "Student",
+                        email: "student@example.test",
+                        role: "student",
+                        created_at: "2026-10-28T00:00:00.000Z",
+                        suspended_at: null,
+                    }],
+                };
+            }
             if (text.includes("UPDATE users")) {
                 return {
                     rows: [{
@@ -121,6 +133,94 @@ test("admin can suspend and restore a non-admin account with an audit record", a
         assert.ok(statements.some(({ text, values }) =>
             text.includes("INSERT INTO admin_action_audit") && values[1] === "suspend_user"
         ));
+        assert.equal(
+            statements.some(({ text }) => text.includes("UPDATE lesson_packages")),
+            false
+        );
+        assert.ok(statements.some(({ text }) => text === "COMMIT"));
+    } finally {
+        pool.connect = originalConnect;
+    }
+});
+
+test("suspending a teacher archives published packages and restoration returns them as drafts", async () => {
+    const originalConnect = pool.connect;
+    const statements = [];
+    let suspended = false;
+    pool.connect = async () => ({
+        async query(text, values) {
+            statements.push({ text, values });
+            if (text.includes("FROM users") && text.includes("FOR UPDATE")) {
+                return {
+                    rows: [{
+                        id: "42",
+                        name: "Teacher",
+                        email: "teacher@example.test",
+                        role: "teacher",
+                        created_at: "2026-10-28T00:00:00.000Z",
+                        suspended_at: suspended ? "2026-10-29T00:00:00.000Z" : null,
+                    }],
+                };
+            }
+            if (text.includes("UPDATE users")) {
+                suspended = values[0];
+                return {
+                    rows: [{
+                        id: "42",
+                        name: "Teacher",
+                        email: "teacher@example.test",
+                        role: "teacher",
+                        created_at: "2026-10-28T00:00:00.000Z",
+                        suspended_at: suspended ? "2026-10-29T00:00:00.000Z" : null,
+                    }],
+                };
+            }
+            if (text.includes("UPDATE lesson_packages") && values[0] === "42") {
+                return { rows: [{ id: "81" }, { id: "82" }] };
+            }
+            if (text.includes("SELECT details->'archived_package_ids'")) {
+                return { rows: [{ package_ids: ["81", "82"] }] };
+            }
+            return { rows: [] };
+        },
+        release() {},
+    });
+
+    try {
+        const suspension = await request(
+            "/api/admin/users/42/status",
+            { method: "PATCH", body: { suspended: true } }
+        );
+        assert.equal(suspension.status, 200);
+        const archive = statements.find(({ text }) =>
+            text.includes("UPDATE lesson_packages") && text.includes("status = 'archived'")
+        );
+        assert.deepEqual(archive.values, ["42"]);
+        const suspendAudit = statements.find(({ text, values }) =>
+            text.includes("INSERT INTO admin_action_audit") && values[1] === "suspend_user"
+        );
+        assert.deepEqual(JSON.parse(suspendAudit.values[3]), {
+            archived_package_ids: ["81", "82"],
+        });
+
+        statements.length = 0;
+        const restoration = await request(
+            "/api/admin/users/42/status",
+            { method: "PATCH", body: { suspended: false } }
+        );
+        assert.equal(restoration.status, 200);
+        const restore = statements.find(({ text }) =>
+            text.includes("UPDATE lesson_packages") && text.includes("status = 'draft'")
+        );
+        assert.deepEqual(restore.values, ["42", ["81", "82"]]);
+        assert.match(restore.text, /id = ANY\(\$2::bigint\[\]\)/);
+        const restoreAudit = statements.find(({ text, values }) =>
+            text.includes("INSERT INTO admin_action_audit") && values[1] === "restore_user"
+        );
+        assert.deepEqual(JSON.parse(restoreAudit.values[3]), {
+            restored_as: "draft",
+            restored_package_ids: ["81", "82"],
+        });
         assert.ok(statements.some(({ text }) => text === "COMMIT"));
     } finally {
         pool.connect = originalConnect;

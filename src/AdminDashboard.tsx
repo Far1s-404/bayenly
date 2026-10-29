@@ -157,6 +157,7 @@ const labels = {
     signOut: 'Sign out',
     adminRestriction: 'Administrator accounts cannot be suspended here.',
     confirmation: 'This change is reversible. Continue?',
+    suspendTeacherConfirmation: 'Suspend this teacher and archive all their published packages? Restored packages will return as drafts.',
     restorePackageNote: 'Restored packages return as drafts and must be republished.',
   },
   ar: {
@@ -206,6 +207,7 @@ const labels = {
     signOut: 'تسجيل الخروج',
     adminRestriction: 'لا يمكن إيقاف حسابات المسؤولين من هنا.',
     confirmation: 'هذا التغيير قابل للاستعادة. هل تريد المتابعة؟',
+    suspendTeacherConfirmation: 'هل تريد إيقاف هذا المدرس وأرشفة جميع باقاته المنشورة؟ ستعود الباقات كمسودات عند استعادة الحساب.',
     restorePackageNote: 'تعود الباقة كمسودة ويجب نشرها مجددًا.',
   },
 };
@@ -373,7 +375,10 @@ function renderPayload(
         <button className="button button-outline admin-action-button" disabled={self || protectedAdmin || busyKey === key}
           title={protectedAdmin ? text.adminRestriction : undefined}
           onClick={() => {
-            if (window.confirm(text.confirmation)) void update(`/admin/users/${user.id}/status`, 'PATCH', { suspended: !suspended }, key);
+            const confirmation = user.role === 'teacher' && !suspended
+              ? text.suspendTeacherConfirmation
+              : text.confirmation;
+            if (window.confirm(confirmation)) void update(`/admin/users/${user.id}/status`, 'PATCH', { suspended: !suspended }, key);
           }}>{busyKey === key ? '…' : suspended ? text.restore : text.suspend}</button>,
       ];
     })} empty={text.noRows} />;

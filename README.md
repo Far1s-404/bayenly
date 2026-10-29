@@ -54,7 +54,9 @@ application review, account suspension/restoration, package and video
 archiving/restoration, read-only purchase history, and an audit log. Admin
 actions are restricted by the authenticated database role. Administrator
 accounts cannot be suspended from this workspace, and records are archived or
-suspended rather than permanently deleted. Archived packages restore as drafts.
+suspended rather than permanently deleted. Suspending a teacher archives their
+currently published packages; restoring the account returns those packages as
+drafts, and they must be published again.
 
 Checkout and purchase creation remain disabled until a real payment provider is
 configured. Existing pending purchases are preserved and are not marked paid.

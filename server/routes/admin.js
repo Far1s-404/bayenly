@@ -83,6 +83,26 @@ router.patch(
         const client = await pool.connect();
         try {
             await client.query("BEGIN");
+            const existing = await client.query(
+                `SELECT id, name, email, role, created_at, suspended_at
+                 FROM users
+                 WHERE id = $1 AND role <> 'admin'
+                 FOR UPDATE`,
+                [id]
+            );
+            if (existing.rows.length === 0) {
+                await client.query("ROLLBACK");
+                return res.status(404).json({
+                    message: "User not found or administrator accounts cannot be suspended here.",
+                });
+            }
+
+            const wasSuspended = Boolean(existing.rows[0].suspended_at);
+            if (wasSuspended === suspended) {
+                await client.query("COMMIT");
+                return res.json({ user: existing.rows[0] });
+            }
+
             const result = await client.query(
                 `UPDATE users
                  SET suspended_at = CASE WHEN $1 THEN COALESCE(suspended_at, NOW()) ELSE NULL END
@@ -96,10 +116,57 @@ router.patch(
                     message: "User not found or administrator accounts cannot be suspended here.",
                 });
             }
+
+            let affectedPackageIds = [];
+            if (result.rows[0].role === "teacher" && suspended) {
+                const archived = await client.query(
+                    `UPDATE lesson_packages
+                     SET status = 'archived', updated_at = NOW()
+                     WHERE teacher_id = $1 AND status = 'published'
+                     RETURNING id`,
+                    [id]
+                );
+                affectedPackageIds = archived.rows.map((row) => String(row.id));
+            } else if (result.rows[0].role === "teacher") {
+                const priorSuspension = await client.query(
+                    `SELECT details->'archived_package_ids' AS package_ids
+                     FROM admin_action_audit
+                     WHERE action = 'suspend_user'
+                       AND target_type = 'user'
+                       AND target_id = $1
+                     ORDER BY id DESC
+                     LIMIT 1
+                     FOR UPDATE`,
+                    [id]
+                );
+                const packageIds = priorSuspension.rows[0]?.package_ids;
+                if (Array.isArray(packageIds) && packageIds.length > 0) {
+                    const restored = await client.query(
+                        `UPDATE lesson_packages
+                         SET status = 'draft', updated_at = NOW()
+                         WHERE teacher_id = $1
+                           AND id = ANY($2::bigint[])
+                           AND status = 'archived'
+                         RETURNING id`,
+                        [id, packageIds.map(String)]
+                    );
+                    affectedPackageIds = restored.rows.map((row) => String(row.id));
+                }
+            }
+
             await client.query(
-                `INSERT INTO admin_action_audit (admin_id, action, target_type, target_id)
-                 VALUES ($1, $2, 'user', $3)`,
-                [req.user.id, suspended ? "suspend_user" : "restore_user", id]
+                `INSERT INTO admin_action_audit
+                    (admin_id, action, target_type, target_id, details)
+                 VALUES ($1, $2, 'user', $3, $4::jsonb)`,
+                [
+                    req.user.id,
+                    suspended ? "suspend_user" : "restore_user",
+                    id,
+                    JSON.stringify({
+                        ...(suspended ? { archived_package_ids: affectedPackageIds } : {}),
+                        ...(!suspended ? { restored_as: "draft", restored_package_ids: affectedPackageIds } : {}),
+                    }),
+                ]
             );
             await client.query("COMMIT");
             return res.json({ user: result.rows[0] });
