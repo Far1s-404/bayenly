@@ -27,6 +27,8 @@ app.use("/api/auth", require("./routes/auth"));
 app.use("/api/lessons", require("./routes/lessons"));
 app.use("/api/purchases", require("./routes/purchases"));
 app.use("/api/learning", require("./routes/learning"));
+app.use("/api/teacher-applications", require("./routes/teacherApplications"));
+app.use("/api/admin", require("./routes/admin"));
 app.use("/api/payments", require("./routes/payments"));
 
 app.get("/", (req, res) => {
@@ -101,9 +103,7 @@ async function startServer() {
             );
         }
 
-        await pool.query(
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT"
-        );
+        await pool.query("SELECT 1");
 
         app.listen(PORT, () => {
             console.log(`Bayenly API running at http://localhost:${PORT}`);

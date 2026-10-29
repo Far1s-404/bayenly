@@ -24,10 +24,29 @@ router.get(
                     lp.description,
                     lp.subject,
                     lp.language,
-                    u.name AS teacher_name
+                    u.name AS teacher_name,
+                    progress.video_count,
+                    progress.completed_count,
+                    CASE
+                        WHEN progress.video_count = 0 THEN 0
+                        ELSE ROUND(
+                            progress.completed_count * 100.0
+                            / progress.video_count
+                        )::int
+                    END AS progress_percent
                  FROM purchases p
                  JOIN lesson_packages lp ON lp.id = p.package_id
                  JOIN users u ON u.id = lp.teacher_id
+                 LEFT JOIN LATERAL (
+                    SELECT
+                        COUNT(lv.id)::int AS video_count,
+                        COUNT(progress.video_id)::int AS completed_count
+                    FROM lesson_videos lv
+                    LEFT JOIN lesson_progress progress
+                        ON progress.video_id = lv.id
+                       AND progress.student_id = p.student_id
+                    WHERE lv.package_id = p.package_id
+                 ) progress ON TRUE
                  WHERE p.student_id = $1
                  ORDER BY p.created_at DESC`,
                 [req.user.id]
@@ -36,6 +55,15 @@ router.get(
             res.json({ purchases: result.rows });
         } catch (error) {
             console.error("Fetch purchases error:", error.message);
+            if (
+                error.code === "42P01" &&
+                error.message.includes("lesson_progress")
+            ) {
+                return res.status(500).json({
+                    message: "The lesson progress migration is missing. Run npm run db:migrate from the server directory.",
+                });
+            }
+
             res.status(500).json({
                 message: "Unable to retrieve purchases."
             });
@@ -54,7 +82,7 @@ router.post(
             const { package_id } = req.body;
 
             if (
-                !Number.isInteger(package_id) ||
+                !Number.isSafeInteger(package_id) ||
                 package_id < 1
             ) {
                 return res.status(400).json({

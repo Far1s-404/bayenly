@@ -5,6 +5,16 @@ const { authenticateToken, requireRole } = require("../middleware/auth");
 
 const router = express.Router();
 
+function isValidPrice(price) {
+    return (
+        typeof price === "number" &&
+        Number.isFinite(price) &&
+        price > 0 &&
+        price <= 99999999.99 &&
+        Number(price.toFixed(2)) === price
+    );
+}
+
 function validateIdParam(req, res, next, value) {
     if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value))) {
         return res.status(400).json({
@@ -26,11 +36,14 @@ requireRole("teacher", "admin"),
 async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT id, title, description, subject, price,
-                    language, status, created_at, updated_at
-                FROM lesson_packages
-                WHERE teacher_id = $1
-                ORDER BY created_at DESC`,
+            `SELECT lp.id, lp.title, lp.description, lp.subject, lp.price,
+                    lp.language, lp.status, lp.created_at, lp.updated_at,
+                    COUNT(lv.id)::int AS video_count
+             FROM lesson_packages lp
+             LEFT JOIN lesson_videos lv ON lv.package_id = lp.id
+             WHERE lp.teacher_id = $1
+             GROUP BY lp.id
+             ORDER BY lp.created_at DESC`,
             [req.user.id]
         );
 
@@ -77,12 +90,10 @@ async (req, res) => {
         }
 
         if (
-            typeof price !== "number" ||
-            !Number.isFinite(price) ||
-            price <= 0
+            !isValidPrice(price)
         ) {
             return res.status(400).json({
-                message: "Price must be a number greater than zero.",
+                message: "Price must be positive, fit the supported range, and have at most two decimal places.",
             });
         }
 
@@ -147,12 +158,10 @@ async (req, res) => {
         }
 
         if (
-            typeof price !== "number" ||
-            !Number.isFinite(price) ||
-            price <= 0
+            !isValidPrice(price)
         ) {
             return res.status(400).json({
-                message: "Price must be a number greater than zero.",
+                message: "Price must be positive, fit the supported range, and have at most two decimal places.",
             });
         }
 
@@ -326,39 +335,44 @@ async (req, res) => {
             });
         }
 
-        const packageResult = await pool.query(
-            `SELECT id, status
-                FROM lesson_packages
-                WHERE id = $1 AND teacher_id = $2`,
-            [req.params.id, req.user.id]
-        );
-
-        if (packageResult.rows.length === 0) {
-            return res.status(404).json({
-                message: "Lesson package not found.",
-            });
-        }
-
-        if (packageResult.rows[0].status !== "draft") {
-            return res.status(400).json({
-                message: "Only draft packages can be edited.",
-            });
-        }
-
         const result = await pool.query(
             `INSERT INTO lesson_videos
                 (package_id, title, video_url, duration_seconds, position)
-                VALUES ($1, $2, $3, $4, $5)
-                RETURNING id, package_id, title, video_url,
-                        duration_seconds, position, created_at`,
+             SELECT lp.id, $2, $3, $4, $5
+             FROM lesson_packages lp
+             WHERE lp.id = $1
+               AND lp.teacher_id = $6
+               AND lp.status = 'draft'
+             RETURNING id, package_id, title, video_url,
+                       duration_seconds, position, created_at`,
             [
                 req.params.id,
                 title.trim(),
                 video_url.trim(),
                 duration_seconds ?? null,
                 position,
+                req.user.id,
             ]
         );
+
+        if (result.rows.length === 0) {
+            const packageResult = await pool.query(
+                `SELECT status
+                 FROM lesson_packages
+                 WHERE id = $1 AND teacher_id = $2`,
+                [req.params.id, req.user.id]
+            );
+
+            if (packageResult.rows.length === 0) {
+                return res.status(404).json({
+                    message: "Lesson package not found.",
+                });
+            }
+
+            return res.status(400).json({
+                message: "Only draft packages can be edited.",
+            });
+        }
 
         res.status(201).json({
             message: "Video added successfully.",
@@ -384,6 +398,99 @@ async (req, res) => {
     }
 }
 );
+
+router.put(
+"/:id/videos/:videoId",
+authenticateToken,
+requireRole("teacher", "admin"),
+async (req, res) => {
+    try {
+        const { title, video_url, duration_seconds } = req.body;
+
+        if (
+            typeof title !== "string" ||
+            !title.trim() ||
+            title.trim().length > 200 ||
+            typeof video_url !== "string" ||
+            !video_url.trim() ||
+            video_url.trim().length > 2048
+        ) {
+            return res.status(400).json({
+                message: "A valid video title and URL are required.",
+            });
+        }
+
+        let parsedVideoUrl;
+        try {
+            parsedVideoUrl = new URL(video_url.trim());
+        } catch {
+            return res.status(400).json({
+                message: "Video URL must be an absolute HTTP or HTTPS URL.",
+            });
+        }
+
+        if (
+            !["http:", "https:"].includes(parsedVideoUrl.protocol) ||
+            parsedVideoUrl.username ||
+            parsedVideoUrl.password
+        ) {
+            return res.status(400).json({
+                message: "Video URL must be an absolute HTTP or HTTPS URL.",
+            });
+        }
+
+        if (
+            duration_seconds !== undefined &&
+            duration_seconds !== null &&
+            (!Number.isInteger(duration_seconds) || duration_seconds < 0)
+        ) {
+            return res.status(400).json({
+                message: "Duration must be a non-negative integer.",
+            });
+        }
+
+        const result = await pool.query(
+            `UPDATE lesson_videos lv
+             SET title = $3,
+                 video_url = $4,
+                 duration_seconds = $5
+             FROM lesson_packages lp
+             WHERE lv.id = $1
+               AND lv.package_id = $2
+               AND lp.id = lv.package_id
+               AND lp.teacher_id = $6
+               AND lp.status = 'draft'
+             RETURNING lv.id, lv.package_id, lv.title, lv.video_url,
+                       lv.duration_seconds, lv.position, lv.created_at`,
+            [
+                req.params.videoId,
+                req.params.id,
+                title.trim(),
+                video_url.trim(),
+                duration_seconds ?? null,
+                req.user.id,
+            ]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                message: "Video not found in your draft package.",
+            });
+        }
+
+        return res.json({
+            message: "Video updated successfully.",
+            video: result.rows[0],
+        });
+    } catch (error) {
+        console.error("Update video error:", error.message);
+        return res.status(500).json({
+            message: "Unable to update video.",
+        });
+    }
+}
+);
+
 
 // GET /api/lessons/:id/videos
 router.get(

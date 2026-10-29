@@ -59,7 +59,7 @@ router.post("/register", async (req, res) => {
         }
 
         const existingUser = await pool.query(
-            "SELECT id FROM users WHERE email = $1",
+            "SELECT id FROM users WHERE lower(email) = $1",
             [cleanEmail]
         );
 
@@ -119,7 +119,7 @@ router.post("/login", async (req, res) => {
         const result = await pool.query(
             `SELECT id, name, email, phone, password_hash, role
              FROM users
-             WHERE email = $1`,
+             WHERE lower(email) = $1`,
             [cleanEmail]
         );
 

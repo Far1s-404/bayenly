@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import Dashboard from './Dashboard';
-import { API_BASE } from './api';
-import { ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, BadgeCheck, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, CircleHelp, Clock3, Download, FileText, Headphones, LayoutDashboard, Library, LockKeyhole, Menu, MoreHorizontal, Play, Plus, Search, Settings, ShieldCheck, ShoppingBag, Sparkles, Star, TrendingUp, Users, Video, Wallet, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { API_BASE, type AuthUser } from './api';
+import { ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, BadgeCheck, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, CircleHelp, Clock3, Download, FileText, Headphones, LayoutDashboard, Library, LockKeyhole, LogOut, Menu, MoreHorizontal, Play, Plus, Search, Settings, ShieldCheck, ShoppingBag, Sparkles, Star, TrendingUp, User, Users, Video, Wallet, X } from 'lucide-react';
 
 import { videos, type Lesson } from './data';
 
@@ -19,7 +18,7 @@ type ApiLesson = {
 
 
 type Lang = 'en' | 'ar';
-type Screen = 'home' | 'lesson' | 'dashboard';
+type Screen = 'home' | 'lesson';
 const copy = {
   en: { explore: 'Explore lessons', teacher: 'Become a teacher', signin: 'Sign in', signup: 'Get started', heroKicker: 'LEARNING, ON YOUR TERMS', heroTitle: 'Find your lesson.\nGet it. Keep it.', heroText: 'The exact explanation you need, from Egypt’s best teachers. Pay once, learn whenever.', search: 'Search lessons, subjects, teachers…', searchBtn: 'Find a lesson', browse: 'Browse by subject', browseText: 'A good place to start.', featured: 'Picked for you', featuredText: 'Small packages. Big “aha” moments.', viewAll: 'View all lessons', how: 'Learning that fits your life', howText: 'No subscriptions. No pressure. Just the lesson you need.', steps: ['Find your lesson', 'Pay once', 'Learn your way'], stepsText: ['Search by subject, grade, or teacher.', 'One simple payment unlocks the whole package.', 'Rewatch anytime. Your lessons stay yours.'], teacherCta: 'Teach what you love.', teacherSub: 'Turn your expertise into lessons students can keep coming back to.', startTeaching: 'Start teaching', footer: 'Made for curious minds, right here in Egypt.', details: 'View lesson', all: 'All subjects', empty: 'No lessons found', emptySub: 'Try another search or choose a different subject.', videos: 'videos', categories: ['All subjects','Mathematics','Science','Languages','Physics','Biology','History'] },
   ar: { explore: 'استكشف الدروس', teacher: 'كن معلّمًا', signin: 'دخول', signup: 'ابدأ الآن', heroKicker: 'تعلّم على طريقتك', heroTitle: 'الشرح اللي محتاجه\nبالظبط.', heroText: 'شرح واضح من أفضل المدرسين في مصر. ادفع مرة واحدة واتعلم وقت ما تحب.', search: 'ابحث عن درس، مادة، أو معلّم…', searchBtn: 'ابحث عن درس', browse: 'استكشف حسب المادة', browseText: 'بداية موفقة للتعلّم.', featured: 'اخترنا لك', featuredText: 'باقات صغيرة. لحظات فهم كبيرة.', viewAll: 'كل الدروس', how: 'تعلّم يناسب يومك', howText: 'من غير اشتراكات أو ضغط. الدرس اللي محتاجه وبس.', steps: ['اختار درسك', 'ادفع مرة واحدة', 'اتعلم بطريقتك'], stepsText: ['ابحث بالمادة أو الصف أو اسم المدرس.', 'دفعة واحدة تفتح لك الباقة كاملة.', 'شاهد في أي وقت. دروسك تفضل معاك.'], teacherCta: 'علّم اللي بتحبه.', teacherSub: 'حوّل خبرتك لدروس يرجعلها الطلاب وقت ما يحتاجوا.', startTeaching: 'ابدأ التدريس', footer: 'للعقول الفضولية، من قلب مصر.', details: 'عرض الدرس', all: 'كل المواد', empty: 'ملقيناش دروس', emptySub: 'جرّب بحث تاني أو اختار مادة مختلفة.', videos: 'فيديوهات', categories: ['كل المواد','رياضيات','علوم','لغات','فيزياء','أحياء','تاريخ'] }
@@ -29,11 +28,11 @@ const subjects = [
 ];
 const teacherSections = ['Overview', 'My Packages', 'Content Library', 'Orders & Earnings', 'Profile'];
 
-type MarketplaceProps = { lang?: Lang; setLang?: (language: Lang) => void; route?: string; onNavigate?: (path: string) => void };
-export default function App({ lang: externalLang, setLang: externalSetLang, route = '/', onNavigate }: MarketplaceProps) {
+type MarketplaceProps = { lang?: Lang; setLang?: (language: Lang) => void; route?: string; onNavigate?: (path: string) => void; authUser?: AuthUser | null; onSignOut?: () => void };
+export default function App({ lang: externalLang, setLang: externalSetLang, route = '/', onNavigate, authUser, onSignOut }: MarketplaceProps) {
   const [internalLang, setInternalLang] = useState<Lang>('en');
   const lang = externalLang ?? internalLang; const setLang = externalSetLang ?? setInternalLang;
-  const [screen, setScreen] = useState<Screen>(() => route.startsWith('/lesson') ? 'lesson' : route.startsWith('/teacher') ? 'dashboard' : 'home');
+  const [screen, setScreen] = useState<Screen>(() => route.startsWith('/lesson') ? 'lesson' : 'home');
   const [query, setQuery] = useState('');
   
   const [apiLessons, setApiLessons] = useState<Lesson[]>([]);
@@ -42,11 +41,29 @@ export default function App({ lang: externalLang, setLang: externalSetLang, rout
 
   const [category, setCategory] = useState(0);
   const [toast, setToast] = useState('');
-  const [activeSection, setActiveSection] = useState('Overview');
   const [mobileNav, setMobileNav] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
   const t = copy[lang]; const ar = lang === 'ar';
-  useEffect(() => { setScreen(route.startsWith('/lesson') ? 'lesson' : route.startsWith('/teacher') ? 'dashboard' : 'home'); }, [route]);
+  useEffect(() => { setScreen(route.startsWith('/lesson') ? 'lesson' : 'home'); }, [route]);
   useEffect(() => { document.documentElement.lang = lang; document.documentElement.dir = ar ? 'rtl' : 'ltr'; }, [lang, ar]);
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (event.target instanceof Node && !accountMenuRef.current?.contains(event.target)) {
+        setAccountMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAccountMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [accountMenuOpen]);
   
   
 useEffect(() => {
@@ -134,7 +151,17 @@ const mapped: Lesson[] = packages.map((item, index) => {
   useEffect(() => {
     setSelectedLessonId(routeLessonId);
   }, [routeLessonId]);
-  const go = (target: Screen) => { setScreen(target); setMobileNav(false); onNavigate?.(target === 'lesson' ? '/lesson/newton' : target === 'dashboard' ? '/teacher/overview' : '/'); window.scrollTo({top:0,behavior:'smooth'}); };
+  const go = (target: Screen) => { setScreen(target); setMobileNav(false); onNavigate?.(target === 'lesson' ? '/lesson/newton' : '/'); window.scrollTo({top:0,behavior:'smooth'}); };
+  const workspacePath = authUser?.role === 'admin'
+    ? '/admin/overview'
+    : authUser?.role === 'teacher'
+      ? '/teacher/overview'
+      : '/student/overview';
+  const teachingPath = authUser?.role === 'teacher'
+    ? '/teacher/overview'
+    : authUser?.role === 'admin'
+      ? '/admin/overview'
+      : '/teacher/apply';
   const openLesson = (id: number) => {
   setSelectedLessonId(id);
   setScreen('lesson');
@@ -142,10 +169,67 @@ const mapped: Lesson[] = packages.map((item, index) => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 };
   return <div className={`app ${ar?'rtl':'ltr'}`} dir={ar?'rtl':'ltr'}>
-    {screen === 'dashboard' ? <Dashboard lang={lang} setLang={setLang} ar={ar} active={activeSection} setActive={setActiveSection} onHome={()=>go('home')} onCreate={()=>notify(ar?'إنشاء الباقات متاح قريبًا في النموذج التجريبي.':'Package creation is coming soon in this demo.')} /> : <>
       <header className="topbar"><div className="topbar-inner"><button className="brand" onClick={()=>go('home')} aria-label="Bayyenly home"><span className="brand-mark">ب</span><span>bayyenly<span className="brand-dot">.</span></span></button>
-        <nav className={`main-nav ${mobileNav?'nav-open':''}`}><button onClick={()=>go('home')}>{t.explore}</button><button onClick={()=>go('dashboard')}>{t.teacher}</button></nav>
-        <div className="nav-actions"><LanguageSwitch lang={lang} setLang={setLang}/><button className="text-button hide-small" onClick={()=>onNavigate?.('/login')}>{t.signin}</button><button className="button button-dark nav-cta" onClick={()=>onNavigate?.('/register')}>{t.signup}<ArrowUpRight size={15}/></button></div>
+        <nav className={`main-nav ${mobileNav?'nav-open':''}`}><button onClick={()=>go('home')}>{t.explore}</button><button onClick={()=>onNavigate?.(teachingPath)}>{t.teacher}</button></nav>
+        <div className="nav-actions">
+          <LanguageSwitch lang={lang} setLang={setLang} />
+          {authUser ? (
+            <>
+              <button className="text-button hide-small" onClick={() => onNavigate?.(workspacePath)}>
+                {authUser.name}
+              </button>
+              <div className="account-menu-container" ref={accountMenuRef}>
+                <button
+                  className="button button-outline nav-settings"
+                  onClick={() => setAccountMenuOpen((open) => !open)}
+                  aria-label={ar ? 'قائمة الحساب' : 'Account menu'}
+                  aria-haspopup="menu"
+                  aria-expanded={accountMenuOpen}
+                  title={ar ? 'قائمة الحساب' : 'Account menu'}
+                >
+                  <Settings size={16} />
+                  <span className="settings-label">{ar ? 'الحساب' : 'Account'}</span>
+                </button>
+                {accountMenuOpen && (
+                  <div className="account-menu" role="menu">
+                    <div className="account-menu-heading">{authUser.name}</div>
+                    {authUser.role === 'student' ? (
+                      <>
+                        <button role="menuitem" onClick={() => { setAccountMenuOpen(false); onNavigate?.('/student/profile'); }}>
+                          <User size={16} />{ar ? 'إعدادات الملف الشخصي' : 'Profile settings'}
+                        </button>
+                        <button role="menuitem" onClick={() => { setAccountMenuOpen(false); onNavigate?.('/student/overview'); }}>
+                          <LayoutDashboard size={16} />{ar ? 'لوحة الطالب' : 'Student overview'}
+                        </button>
+                        <button role="menuitem" onClick={() => { setAccountMenuOpen(false); onNavigate?.('/student/learning'); }}>
+                          <BookOpen size={16} />{ar ? 'تعلّمي' : 'My learning'}
+                        </button>
+                        <button role="menuitem" onClick={() => { setAccountMenuOpen(false); onNavigate?.('/student/orders'); }}>
+                          <ShoppingBag size={16} />{ar ? 'سجل المشتريات' : 'Purchase history'}
+                        </button>
+                      </>
+                    ) : (
+                      <button role="menuitem" onClick={() => { setAccountMenuOpen(false); onNavigate?.(workspacePath); }}>
+                        <LayoutDashboard size={16} />{ar ? 'مساحة العمل' : 'Workspace'}
+                      </button>
+                    )}
+                    <div className="account-menu-divider" />
+                    <button className="account-menu-signout" role="menuitem" onClick={() => { setAccountMenuOpen(false); onSignOut?.(); }}>
+                      <LogOut size={16} />{ar ? 'تسجيل الخروج' : 'Sign out'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <button className="text-button hide-small" onClick={() => onNavigate?.('/login')}>{t.signin}</button>
+              <button className="button button-dark nav-cta" onClick={() => onNavigate?.('/register')}>
+                {t.signup}<ArrowUpRight size={15} />
+              </button>
+            </>
+          )}
+        </div>
         <button className="mobile-menu" onClick={()=>setMobileNav(!mobileNav)} aria-label="Toggle navigation">{mobileNav?<X/>:<Menu/>}</button>
       </div></header>
       {screen === 'home' ? <main>
@@ -180,7 +264,7 @@ const mapped: Lesson[] = packages.map((item, index) => {
           </div>
         )}</section>
         <section className="how-section"><div className="how-intro"><div className="eyebrow"><span className="eyebrow-dot lime-dot"/>{ar?'تعلم من غير تعقيد':'SIMPLE BY DESIGN'}</div><h2>{t.how}</h2><p>{t.howText}</p><button className="button button-lime" onClick={()=>document.getElementById('lessons')?.scrollIntoView({behavior:'smooth'})}>{ar?'استكشف الدروس':'Explore lessons'}<ArrowRight className={ar?'flip':''} size={16}/></button><div className="how-deco">✳</div></div><div className="step-list">{t.steps.map((step,i)=><div className="step-item" key={step}><span className={`step-number ${i===1?'step-coral':''}`}>0{i+1}</span><div><h3>{step}</h3><p>{t.stepsText[i]}</p></div><ArrowDownLeft className="step-arrow" size={18}/></div>)}</div></section>
-        <section className="teacher-banner"><div className="teacher-doodle">✳</div><div className="teacher-content"><div className="eyebrow"><span className="eyebrow-dot coral-dot"/>{ar?'للمدرسين':'FOR TEACHERS'}</div><h2>{t.teacherCta}</h2><p>{t.teacherSub}</p><button className="button button-dark" onClick={()=>go('dashboard')}>{t.startTeaching}<ArrowUpRight size={16}/></button></div><div className="teacher-stats"><div><strong>EGP</strong><span>{ar?'دخل مقابل خبرتك':'Your knowledge, valued'}</span></div><div className="stats-line"/><div><strong>∞</strong><span>{ar?'دروسك تفضل متاحة':'Lessons that last'}</span></div></div></section>
+        <section className="teacher-banner"><div className="teacher-doodle">✳</div><div className="teacher-content"><div className="eyebrow"><span className="eyebrow-dot coral-dot"/>{ar?'للمدرسين':'FOR TEACHERS'}</div><h2>{t.teacherCta}</h2><p>{t.teacherSub}</p><button className="button button-dark" onClick={()=>onNavigate?.(teachingPath)}>{t.startTeaching}<ArrowUpRight size={16}/></button></div><div className="teacher-stats"><div><strong>EGP</strong><span>{ar?'دخل مقابل خبرتك':'Your knowledge, valued'}</span></div><div className="stats-line"/><div><strong>∞</strong><span>{ar?'دروسك تفضل متاحة':'Lessons that last'}</span></div></div></section>
       </main> : <LessonDetails
   lang={lang}
   lessonId={selectedLessonId}
@@ -188,8 +272,7 @@ const mapped: Lesson[] = packages.map((item, index) => {
   notify={notify}
   onBuy={(id) => onNavigate?.(`/checkout?packageId=${id}`)}
 />}
-      <Footer lang={lang} onTeacher={()=>go('dashboard')} notify={notify}/>
-    </>}
+      <Footer lang={lang} onTeacher={()=>onNavigate?.(teachingPath)} notify={notify}/>
     {toast&&<div className="toast" role="status"><span className="toast-check"><Check size={15}/></span>{toast}<button onClick={()=>setToast('')} aria-label="Close"><X size={15}/></button></div>}
   </div>;
 }
