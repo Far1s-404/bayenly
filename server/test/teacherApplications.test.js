@@ -12,6 +12,11 @@ process.env.JWT_SECRET = secret;
 async function request(routes, path, { method = "GET", body, role = "student" } = {}) {
     const app = express();
     app.use(express.json());
+    app.locals.lookupAuthenticatedUser = async (id) => ({
+        id,
+        role,
+        suspended_at: null,
+    });
     for (const [prefix, router] of routes) app.use(prefix, router);
     const server = app.listen(0);
 
@@ -39,6 +44,11 @@ async function request(routes, path, { method = "GET", body, role = "student" } 
 async function requestWithoutAuthentication(routes, path) {
     const app = express();
     app.use(express.json());
+    app.locals.lookupAuthenticatedUser = async (id) => ({
+        id,
+        role: "student",
+        suspended_at: null,
+    });
     for (const [prefix, router] of routes) app.use(prefix, router);
     const server = app.listen(0);
 

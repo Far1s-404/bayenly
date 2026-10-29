@@ -4,6 +4,7 @@ import type { AppLang } from './App';
 import type { Lesson } from './data';
 import { studentPurchases, teacherPackages, mediaLibrary, adminQueue } from './mockRepository';
 import { API_BASE, authenticatedFetch, clearAuthSession, saveAuthSession, saveAuthUser, type AuthUser } from './api';
+import AdminDashboard from './AdminDashboard';
 
 type VideoDraft = { id?: number | string; title: string; description: string; duration: string; url?: string };
 export type PackageDraft = { title: string; description: string; subject: string; grade: string; language: string; objectives: string; price: number; videos: VideoDraft[]; resources: string[]; thumbnail?: string };
@@ -18,14 +19,13 @@ export default function Flows(p:Props) {
   if (['/login','/register','/forgot-password'].includes(route)) content=<Auth route={route} lang={lang} navigate={navigate}/>;
   else if (['/student/overview','/student/learning','/student/orders','/student/profile'].includes(route)) content=<StudentWorkspace route={route} lang={lang} navigate={navigate} authUser={authUser!}/>;
   else if (route==='/teacher/apply') content=<TeacherApplication lang={lang} navigate={navigate}/>;
-  else if (route.startsWith('/checkout')) content=<Checkout lang={lang} lesson={lesson} navigate={navigate} orderState={orderState} setOrderState={setOrderState}/>;
+  else if (route.startsWith('/checkout')) content=<CheckoutUnavailable lang={lang} navigate={navigate}/>;
   else if (route==='/confirmation') content=import.meta.env.DEV?<Confirmation lang={lang} lesson={lesson} orderRef={orderRef} navigate={navigate}/>:<NotFound lang={lang} navigate={navigate}/>;
   else if (/^\/learn\/\d+$/.test(route)) content=<LearningAccess lang={lang} packageId={route.split('/')[2]} navigate={navigate}/>;
   else if (route==='/learn/demo'&&import.meta.env.DEV) content=<Learning lang={lang} lesson={lesson} navigate={navigate}/>;
   else if (route==='/teacher/package/new'||/^\/teacher\/package\/[^/]+\/(edit|preview)$/.test(route)) content=<WizardLive lang={lang} draft={draft} setDraft={setDraft} packages={packages} setPackages={setPackages} navigate={navigate} route={route}/>;
   else if (['/teacher/overview','/teacher/packages','/teacher/content','/teacher/orders','/teacher/profile'].includes(route)) content=<TeacherWorkspaceLive route={route} lang={lang} navigate={navigate} draft={draft} setDraft={setDraft} packages={packages} setPackages={setPackages} authUser={authUser!}/>;
-  else if (['/admin/overview','/admin/teachers'].includes(route)) content=<AdminApplications lang={lang} route={route}/>;
-  else if (['/admin/packages','/admin/orders','/admin/refunds','/admin/payouts'].includes(route)) content=<AdminUnavailable lang={lang}/>;
+  else if (route.startsWith('/admin/')) content=<AdminDashboard route={route} lang={lang} navigate={navigate} authUser={authUser!}/>;
   else content=<NotFound lang={lang} navigate={navigate}/>;
   const role = route==='/teacher/apply'?c.studentSpace:route.startsWith('/teacher')?c.teacherSpace:route.startsWith('/admin')?c.adminSpace:route.startsWith('/student')?c.studentSpace:'Bayyenly';
   return <div className={`flow-app app ${ar?'rtl':'ltr'}`} dir={ar?'rtl':'ltr'}><header className="flow-topbar"><button className="brand" onClick={()=>navigate('/')}><span className="brand-mark">ب</span><span>bayyenly<span className="brand-dot">.</span></span></button><span className="flow-role-label">{role}</span><div className="flow-top-right">{authUser&&<span className="flow-user-name">{authUser.name}</span>}<div className="lang-switch"><button className={!ar?'active':''} onClick={()=>setLang('en')}>EN</button><span/><button className={ar?'active':''} onClick={()=>setLang('ar')}>AR</button></div>{authUser&&<button className="flow-home" onClick={()=>{clearAuthSession();navigate('/');}} aria-label={tx(lang,'Sign out','تسجيل الخروج')} title={tx(lang,'Sign out','تسجيل الخروج')}><LogOut size={17}/></button>}<button className="flow-home" onClick={()=>navigate('/')} aria-label={c.home}><Home size={17}/></button></div></header><div className="flow-content">{content}</div></div>;
@@ -1430,6 +1430,14 @@ function AdminApplications({lang,route}:{lang:AppLang;route:string}) {
 
 function AdminUnavailable({lang}:{lang:AppLang}) {
   return <div className="flow-empty not-found"><h1>{tx(lang,'Unavailable','غير متاح')}</h1><p>{tx(lang,'This administrative workflow is not connected to a persistent backend yet. No action was performed.','مسار الإدارة هذا غير متصل بقاعدة البيانات بعد. لم يتم تنفيذ أي إجراء.')}</p></div>;
+}
+
+function CheckoutUnavailable({lang,navigate}:{lang:AppLang;navigate:(path:string)=>void}) {
+  return <div className="flow-empty not-found">
+    <h1>{tx(lang,'Checkout is unavailable','الشراء غير متاح حاليًا')}</h1>
+    <p>{tx(lang,'Payments are not configured yet. No order or charge was created.','لم يتم إعداد الدفع بعد. لم يتم إنشاء طلب أو خصم أي مبلغ.')}</p>
+    <button className="button button-primary" onClick={()=>navigate('/')}>{tx(lang,'Back to marketplace','العودة إلى السوق')}</button>
+  </div>;
 }
 
 function AdminWorkspace({route,lang,navigate}:{route:string;lang:AppLang;navigate:(p:string)=>void}) {

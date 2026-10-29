@@ -128,6 +128,33 @@ test("duplicate registration and incorrect login do not reveal account credentia
                 password: "correct password 123",
             },
         });
+
+        test("suspended accounts cannot start a login session", async () => {
+            const originalQuery = pool.query;
+            const passwordHash = await bcrypt.hash("correct password 123", 4);
+            pool.query = async () => ({
+                rows: [{
+                    id: "602",
+                    name: "Suspended Student",
+                    email: "suspended@example.test",
+                    phone: null,
+                    password_hash: passwordHash,
+                    role: "student",
+                    suspended_at: "2026-10-29T00:00:00.000Z",
+                }],
+            });
+
+            try {
+                const result = await request("/api/auth/login", {
+                    body: { email: "suspended@example.test", password: "correct password 123" },
+                });
+                assert.equal(result.status, 403);
+                assert.match(result.body.message, /account is suspended/i);
+                assert.equal(result.body.token, undefined);
+            } finally {
+                pool.query = originalQuery;
+            }
+        });
         const incorrect = await request("/api/auth/login", {
             body: { email: "existing@example.test", password: "wrong password 123" },
         });

@@ -11,6 +11,11 @@ process.env.JWT_SECRET = secret;
 async function request(path, { method = "GET", body, role = "admin", authenticated = true } = {}) {
     const app = express();
     app.use(express.json());
+    app.locals.lookupAuthenticatedUser = async (id) => ({
+        id,
+        role,
+        suspended_at: null,
+    });
     app.use("/api/admin", adminRoutes);
     const server = app.listen(0);
 
@@ -59,6 +64,114 @@ test("teacher application review requires an authenticated admin", async () => {
         assert.equal(queryCalled, false);
     } finally {
         pool.query = originalQuery;
+    }
+});
+
+test("student accounts cannot read admin account or video controls", async () => {
+    const originalQuery = pool.query;
+    let queryCalled = false;
+    pool.query = async () => {
+        queryCalled = true;
+        return { rows: [] };
+    };
+
+    try {
+        const users = await request("/api/admin/users", { role: "student" });
+        const videos = await request("/api/admin/videos", { role: "student" });
+        assert.equal(users.status, 403);
+        assert.equal(videos.status, 403);
+        assert.equal(queryCalled, false);
+    } finally {
+        pool.query = originalQuery;
+    }
+});
+
+test("admin can suspend and restore a non-admin account with an audit record", async () => {
+    const originalConnect = pool.connect;
+    const statements = [];
+    pool.connect = async () => ({
+        async query(text, values) {
+            statements.push({ text, values });
+            if (text.includes("UPDATE users")) {
+                return {
+                    rows: [{
+                        id: "42",
+                        name: "Student",
+                        email: "student@example.test",
+                        role: "student",
+                        suspended_at: "2026-10-29T00:00:00.000Z",
+                    }],
+                };
+            }
+            return { rows: [] };
+        },
+        release() {},
+    });
+
+    try {
+        const result = await request(
+            "/api/admin/users/42/status",
+            { method: "PATCH", body: { suspended: true, role: "admin" } }
+        );
+        assert.equal(result.status, 200);
+        assert.equal(result.body.user.suspended_at, "2026-10-29T00:00:00.000Z");
+        const update = statements.find(({ text }) => text.includes("UPDATE users"));
+        assert.match(update.text, /WHERE id = \$2 AND role <> 'admin'/);
+        assert.deepEqual(update.values, [true, "42"]);
+        assert.ok(statements.some(({ text, values }) =>
+            text.includes("INSERT INTO admin_action_audit") && values[1] === "suspend_user"
+        ));
+        assert.ok(statements.some(({ text }) => text === "COMMIT"));
+    } finally {
+        pool.connect = originalConnect;
+    }
+});
+
+test("admin cannot suspend their own account", async () => {
+    const originalConnect = pool.connect;
+    let connectCalled = false;
+    pool.connect = async () => {
+        connectCalled = true;
+        throw new Error("Should not connect");
+    };
+
+    try {
+        const result = await request(
+            "/api/admin/users/7/status",
+            { method: "PATCH", body: { suspended: true } }
+        );
+        assert.equal(result.status, 400);
+        assert.equal(connectCalled, false);
+    } finally {
+        pool.connect = originalConnect;
+    }
+});
+
+test("admin can archive and restore videos without deleting their records", async () => {
+    const originalConnect = pool.connect;
+    const statements = [];
+    pool.connect = async () => ({
+        async query(text, values) {
+            statements.push({ text, values });
+            if (text.includes("UPDATE lesson_videos")) {
+                return { rows: [{ id: "23", title: "Video", archived_at: new Date().toISOString() }] };
+            }
+            return { rows: [] };
+        },
+        release() {},
+    });
+
+    try {
+        const result = await request(
+            "/api/admin/videos/23/archive",
+            { method: "PATCH", body: { archived: true } }
+        );
+        assert.equal(result.status, 200);
+        assert.match(statements.find(({ text }) => text.includes("UPDATE lesson_videos")).text, /SET archived_at/);
+        assert.ok(statements.some(({ text }) => text.includes("INSERT INTO admin_action_audit")));
+        assert.ok(statements.some(({ text }) => text === "COMMIT"));
+    } finally {
+        pool.connect = originalConnect;
     }
 });
 

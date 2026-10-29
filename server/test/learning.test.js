@@ -12,6 +12,11 @@ process.env.JWT_SECRET = secret;
 async function requestWithRoutes(routes, path, { method = "GET", body, token } = {}) {
     const app = express();
     app.use(express.json());
+    app.locals.lookupAuthenticatedUser = async (id) => ({
+        id,
+        role: token ? jwt.verify(token, secret).role : "student",
+        suspended_at: null,
+    });
 
     for (const [prefix, router] of routes) {
         app.use(prefix, router);

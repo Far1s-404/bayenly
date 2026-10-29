@@ -38,7 +38,7 @@ async (req, res) => {
         const result = await pool.query(
             `SELECT lp.id, lp.title, lp.description, lp.subject, lp.price,
                     lp.language, lp.status, lp.created_at, lp.updated_at,
-                    COUNT(lv.id)::int AS video_count
+                    COUNT(lv.id) FILTER (WHERE lv.archived_at IS NULL)::int AS video_count
              FROM lesson_packages lp
              LEFT JOIN lesson_videos lv ON lv.package_id = lp.id
              WHERE lp.teacher_id = $1
@@ -230,6 +230,7 @@ async (req, res) => {
                     SELECT 1
                     FROM lesson_videos
                     WHERE package_id = lesson_packages.id
+                      AND archived_at IS NULL
                 )
                 RETURNING id, title, subject, price, language, status`,
             [req.params.id, req.user.id]
@@ -516,7 +517,7 @@ async (req, res) => {
             `SELECT id, package_id, title, video_url,
                     duration_seconds, position, created_at
                 FROM lesson_videos
-                WHERE package_id = $1
+                WHERE package_id = $1 AND archived_at IS NULL
                 ORDER BY position ASC`,
             [req.params.id]
         );
@@ -588,7 +589,8 @@ router.get("/", async (req, res) => {
              FROM lesson_packages lp
              JOIN users u ON u.id = lp.teacher_id
              LEFT JOIN teacher_profiles tp ON tp.user_id = u.id
-             LEFT JOIN lesson_videos lv ON lv.package_id = lp.id
+             LEFT JOIN lesson_videos lv
+                ON lv.package_id = lp.id AND lv.archived_at IS NULL
              WHERE lp.status = 'published'
              GROUP BY
                 lp.id,
@@ -627,7 +629,8 @@ router.get("/:id", async (req, res) => {
              FROM lesson_packages lp
              JOIN users u ON u.id = lp.teacher_id
              LEFT JOIN teacher_profiles tp ON tp.user_id = u.id
-             LEFT JOIN lesson_videos lv ON lv.package_id = lp.id
+             LEFT JOIN lesson_videos lv
+                ON lv.package_id = lp.id AND lv.archived_at IS NULL
              WHERE lp.id = $1
                AND lp.status = 'published'
              GROUP BY lp.id, u.name, tp.specialization`,
@@ -643,7 +646,7 @@ router.get("/:id", async (req, res) => {
         const videosResult = await pool.query(
             `SELECT id, title, duration_seconds, position
              FROM lesson_videos
-             WHERE package_id = $1
+             WHERE package_id = $1 AND archived_at IS NULL
              ORDER BY position ASC`,
             [req.params.id]
         );

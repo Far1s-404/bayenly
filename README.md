@@ -40,10 +40,24 @@ payments, and lesson completion.
    enforce case-insensitive email uniqueness. The email migration stops without
    changing data if it finds existing addresses that differ only by case;
    resolve any reported duplicates manually before rerunning migrations.
+   Migration `005_admin_moderation.sql` adds reversible account suspension,
+   video archiving, and an admin action audit log. Apply all pending migrations
+   manually before deploying the updated API; the application does not run
+   migrations automatically.
 
 Public registration always creates a student account. Teacher access is granted
 only when an authenticated admin approves a pending application. There is no
 public admin-registration flow.
+
+The admin workspace provides database-backed overview metrics, teacher
+application review, account suspension/restoration, package and video
+archiving/restoration, read-only purchase history, and an audit log. Admin
+actions are restricted by the authenticated database role. Administrator
+accounts cannot be suspended from this workspace, and records are archived or
+suspended rather than permanently deleted. Archived packages restore as drafts.
+
+Checkout and purchase creation remain disabled until a real payment provider is
+configured. Existing pending purchases are preserved and are not marked paid.
 
 5. Start the API and frontend in separate terminals:
 

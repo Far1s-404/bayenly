@@ -1,5 +1,6 @@
 
 const jwt = require("jsonwebtoken");
+const pool = require("../db");
 
 const allowedRoles = new Set(["student", "teacher", "admin"]);
 
@@ -39,12 +40,39 @@ function authenticateToken(req, res, next) {
             });
         }
 
-        req.user = {
-            id: payload.sub,
-            role: payload.role,
-        };
+        const lookupUser = req.app?.locals?.lookupAuthenticatedUser ||
+            ((id) => pool.query(
+                "SELECT id, role, suspended_at FROM users WHERE id = $1",
+                [id]
+            ).then((result) => result.rows[0] || null));
 
-        next();
+        Promise.resolve(lookupUser(payload.sub)).then((user) => {
+            if (!user || !allowedRoles.has(user.role)) {
+                return res.status(401).json({
+                    message: "Invalid or expired token.",
+                });
+            }
+
+            if (user.suspended_at) {
+                return res.status(403).json({
+                    message: "This account is suspended. Contact support for assistance.",
+                });
+            }
+
+            req.user = {
+                id: String(user.id),
+                role: user.role,
+            };
+
+            return next();
+        }).catch((error) => {
+            console.error("Authenticated account lookup failed:", error.message);
+            return res.status(error.code === "42703" ? 503 : 500).json({
+                message: error.code === "42703"
+                    ? "The account moderation migration is missing. Run npm run db:migrate from the server directory."
+                    : "Unable to verify your account.",
+            });
+        });
     } catch {
         return res.status(401).json({
             message: "Invalid or expired token.",

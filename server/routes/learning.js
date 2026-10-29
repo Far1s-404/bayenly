@@ -55,7 +55,8 @@ router.get(
                     progress.completed_at
                  FROM purchases p
                  JOIN lesson_packages lp ON lp.id = p.package_id
-                 LEFT JOIN lesson_videos lv ON lv.package_id = lp.id
+                 LEFT JOIN lesson_videos lv
+                    ON lv.package_id = lp.id AND lv.archived_at IS NULL
                  LEFT JOIN lesson_progress progress
                     ON progress.student_id = p.student_id
                    AND progress.video_id = lv.id
@@ -111,6 +112,7 @@ router.post(
                  WHERE p.student_id = $1
                    AND p.package_id = $2
                    AND lv.id = $3
+                   AND lv.archived_at IS NULL
                    AND p.status = 'paid'
                    AND lp.status = 'published'
                  ON CONFLICT (student_id, video_id)

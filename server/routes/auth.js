@@ -117,7 +117,7 @@ router.post("/login", async (req, res) => {
         const cleanEmail = email.trim().toLowerCase();
 
         const result = await pool.query(
-            `SELECT id, name, email, phone, password_hash, role
+            `SELECT id, name, email, phone, password_hash, role, suspended_at
              FROM users
              WHERE lower(email) = $1`,
             [cleanEmail]
@@ -128,6 +128,12 @@ router.post("/login", async (req, res) => {
         if (!user || !(await bcrypt.compare(password, user.password_hash))) {
             return res.status(401).json({
                 message: "Invalid email or password.",
+            });
+        }
+
+        if (user.suspended_at) {
+            return res.status(403).json({
+                message: "This account is suspended. Contact support for assistance.",
             });
         }
 

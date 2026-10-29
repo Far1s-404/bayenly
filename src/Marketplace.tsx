@@ -270,7 +270,6 @@ const mapped: Lesson[] = packages.map((item, index) => {
   lessonId={selectedLessonId}
   onBack={() => go('home')}
   notify={notify}
-  onBuy={(id) => onNavigate?.(`/checkout?packageId=${id}`)}
 />}
       <Footer lang={lang} onTeacher={()=>onNavigate?.(teachingPath)} notify={notify}/>
     {toast&&<div className="toast" role="status"><span className="toast-check"><Check size={15}/></span>{toast}<button onClick={()=>setToast('')} aria-label="Close"><X size={15}/></button></div>}
@@ -299,8 +298,8 @@ function formatDuration(seconds?: number | null) {
   return hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
 }
 
-function LessonDetails({ lang, lessonId, onBack, notify, onBuy }: {
-  lang: Lang; lessonId: number | null; onBack: () => void; notify: (s: string) => void; onBuy: (id: number) => void;
+function LessonDetails({ lang, lessonId, onBack, notify }: {
+  lang: Lang; lessonId: number | null; onBack: () => void; notify: (s: string) => void;
 }) {
   const ar = lang === 'ar';
   const [detail, setDetail] = useState<ApiLessonDetail | null>(null);
@@ -424,13 +423,9 @@ function LessonDetails({ lang, lessonId, onBack, notify, onBuy }: {
             <div className="eyebrow muted-eyebrow">{ar ? 'باقة تعليمية' : 'LESSON PACKAGE'}</div>
             <div className="purchase-price">EGP {price.toLocaleString('en-EG')}<small>{ar ? 'دفعة واحدة' : 'one-time payment'}</small></div>
             <p>{ar ? 'اشترِ الباقة للوصول إلى محتواها.' : 'Purchase this package to access its content.'}</p>
-            <button
-  className="button button-primary buy-button"
-  onClick={() => onBuy(detail.id)}
->
-  {ar ? 'شراء الباقة' : 'Buy Lesson Package'}
-  <ArrowRight className={ar ? 'flip' : ''} size={17} />
-</button>
+            <button className="button button-primary buy-button" disabled aria-describedby="payment-unavailable">
+              {ar ? 'الشراء غير متاح حاليًا' : 'Purchases unavailable'}
+            </button>
             <div className="access-note"><ShieldCheck size={18}/><span><strong>{ar ? 'وصول بعد تأكيد الدفع' : 'Access after payment'}</strong><small>{ar ? 'سيتم فتح المحتوى بعد تأكيد عملية الشراء.' : 'Package content unlocks after the purchase is confirmed.'}</small></span></div>
           </div>
           <div className="package-includes">
@@ -444,7 +439,7 @@ function LessonDetails({ lang, lessonId, onBack, notify, onBuy }: {
             <span className="profile-avatar">{initials || 'T'}</span><div><small>{ar ? 'مدرس الباقة' : 'YOUR TEACHER'}</small><strong>{teacherName}</strong>{detail.teacher_specialization && <span>{detail.teacher_specialization}</span>}</div><ChevronRight size={17}/>
           </div>
         </div>
-        <div className="safe-note"><ShieldCheck size={15}/>{ar ? 'الدفع الآمن سيتوفر عند تفعيل بوابة الدفع.' : 'Secure payments will be available when a payment provider is integrated.'}</div>
+        <div className="safe-note" id="payment-unavailable"><ShieldCheck size={15}/>{ar ? 'لم يتم إعداد الدفع بعد. لن يتم إنشاء طلب أو خصم مبلغ.' : 'Payments are not configured. No order or charge will be created.'}</div>
       </aside>
     </div>
   </main>;
